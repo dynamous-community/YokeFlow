@@ -1,0 +1,34 @@
+# Autonomous Coding Agent Configuration
+# ======================================
+# Local configuration with Docker sandbox enabled for testing
+
+models:
+  initializer: claude-opus-4-5-20251101
+  coding: claude-sonnet-4-5-20250929
+
+timing:
+  auto_continue_delay: 3
+  web_ui_poll_interval: 5
+  web_ui_port: 5001
+
+sandbox:
+  type: docker  # Enable Docker sandbox
+  docker_image: node:20-slim
+  docker_network: bridge
+  docker_memory_limit: 2g
+  docker_cpu_limit: "2.0"
+  # Port forwarding for Playwright browser testing
+  # Maps container ports to host ports (enables localhost access from host)
+  # Only forward ports your project uses to avoid conflicts
+  docker_ports:
+    - "3001:3001"  # Backend API (Express)
+    - "5173:5173"  # Frontend (Vite dev server)
+    # Uncomment additional ports as needed:
+    # - "3000:3000"  # Alternative backend port
+    # - "8000:8000"  # Python/FastAPI
+    # - "8080:8080"  # Alternative backend
+    # - "4200:4200"  # Angular dev server
+
+project:
+  default_generations_dir: generations
+  max_iterations: null

@@ -1,0 +1,105 @@
+# Autonomous Coding Agent Configuration
+# ======================================
+#
+# This is an example configuration file showing all available options.
+# Copy this file to one of these locations to use it:
+#   - .autonomous-coding.yaml (current directory, project-specific)
+#   - ~/.autonomous-coding.yaml (home directory, global defaults)
+#
+# You can also specify a custom config file with: --config path/to/config.yaml
+#
+# All settings are optional - any omitted values will use built-in defaults.
+# Command-line arguments always override config file settings.
+
+# Model Configuration
+# -------------------
+# Specify which Claude models to use for different session types
+models:
+  # Model for initialization session (creates project structure and task database)
+  # Opus is recommended for better planning capabilities
+  initializer: claude-opus-4-5-20251101
+
+  # Model for coding sessions (implements features)
+  # Sonnet is recommended for faster, more cost-effective implementation
+  coding: claude-sonnet-4-5-20250929
+
+# Timing Configuration
+# --------------------
+# Control delays and intervals
+timing:
+  # Seconds to wait between autonomous sessions
+  auto_continue_delay: 3
+
+  # Seconds for web UI auto-refresh polling interval
+  web_ui_poll_interval: 5
+
+  # Port for web UI dashboard (5001 avoids macOS AirPlay on 5000)
+  web_ui_port: 5001
+
+# Security Configuration
+# ----------------------
+# Add custom commands to the blocklist
+security:
+  # List of additional commands to block (beyond built-in blocklist)
+  # Examples: custom deployment scripts, dangerous utilities
+  additional_blocked_commands:
+    # - my-dangerous-script
+    # - custom-deploy
+
+# Project Configuration
+# ---------------------
+# Project and directory settings
+project:
+  # Default directory for generated projects
+  default_generations_dir: generations
+
+  # Default maximum iterations (null = unlimited)
+  # Set a number to limit iterations by default
+  max_iterations: null
+
+# Sandbox Configuration
+# ----------------------
+# Isolated execution environments for agent sessions
+sandbox:
+  # Sandbox type: "none" (no isolation), "docker" (local containers), or "e2b" (cloud)
+  # none: Current behavior - runs directly on host (faster but can leak environment variables)
+  # docker: Runs in Docker container (good isolation, zero cost, unlimited duration)
+  # e2b: Runs in E2B cloud sandbox (production-ready, requires paid tier for long sessions)
+  type: none
+
+  # Docker-specific settings (when type: docker)
+  docker_image: node:20-slim
+  docker_network: bridge
+  docker_memory_limit: 2g
+  docker_cpu_limit: "2.0"
+
+  # E2B-specific settings (when type: e2b)
+  # e2b_api_key: ${E2B_API_KEY}  # Or set E2B_API_KEY environment variable
+  # e2b_tier: pro  # "free" (1-hour limit) or "pro" (24-hour limit, $150/month)
+
+# ============================================================================
+# Usage Examples:
+# ============================================================================
+#
+# 1. Use all defaults from this config:
+#    python autonomous_agent.py --project-dir my_project
+#
+# 2. Override just the coding model:
+#    python autonomous_agent.py --project-dir my_project --coding-model claude-opus-4-5-20251101
+#
+# 3. Override both models:
+#    python autonomous_agent.py --project-dir my_project --model claude-sonnet-4-5-20250929
+#
+# 4. Use a different config file:
+#    python autonomous_agent.py --project-dir my_project --config my-config.yaml
+#
+# 5. Set max iterations:
+#    python autonomous_agent.py --project-dir my_project --max-iterations 5
+#
+# ============================================================================
+# Priority Order (highest to lowest):
+# ============================================================================
+# 1. Command-line arguments (--model, --initializer-model, etc.)
+# 2. Configuration file (--config or auto-detected)
+# 3. Built-in defaults (if no config file exists)
+# ============================================================================

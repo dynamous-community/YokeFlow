@@ -1,0 +1,54 @@
+# Agent Sandbox Dockerfile
+#
+# This is the Docker image used for running autonomous coding sessions.
+# It includes all tools the agent needs: Node.js, Playwright browsers, git, etc.
+#
+# Build: docker build -f Dockerfile.agent-sandbox -t autonomous-agent-sandbox:latest .
+# Used by: sandbox_manager.py when creating Docker sandboxes
+
+FROM node:20-bookworm
+
+# Install system dependencies for Playwright
+# Playwright requires many libraries for Chromium/Chrome
+RUN apt-get update && apt-get install -y \
+    # Git for version control
+    git \
+    # Build tools
+    build-essential \
+    # Playwright browser dependencies
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libdbus-1-3 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpangocairo-1.0-0 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libatspi2.0-0 \
+    libxshmfence1 \
+    # Fonts
+    fonts-liberation \
+    fonts-noto-color-emoji \
+    # Clean up
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Playwright and browsers
+# This takes ~500MB but is essential for browser testing
+RUN npm install -g playwright@latest \
+    && npx playwright install chrome chromium \
+    && npx playwright install-deps
+
+# Set working directory
+WORKDIR /workspace
+
+# Keep container running (wait for exec commands)
+CMD ["tail", "-f", "/dev/null"]

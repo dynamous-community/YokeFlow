@@ -1,0 +1,231 @@
+# Simple Todo API - Test Specification
+
+## Project Overview
+
+Build a minimal REST API for managing todo items. This is a simple test project designed for UI/UX testing of the autonomous coding platform.
+
+**Tech Stack:**
+- Node.js with Express
+- In-memory storage (no database)
+- Port 3002
+
+**Purpose:** Quick initialization and coding sessions (5-10 minutes total) to verify platform functionality.
+
+---
+
+## Core Features
+
+### 1. Todo Item Structure
+
+Each todo item has:
+- `id` - Unique identifier (number, auto-increment)
+- `title` - Todo description (string, required)
+- `completed` - Completion status (boolean, default: false)
+- `createdAt` - Creation timestamp (ISO string)
+
+Example:
+```json
+{
+  "id": 1,
+  "title": "Buy groceries",
+  "completed": false,
+  "createdAt": "2024-12-16T10:30:00.000Z"
+}
+```
+
+### 2. API Endpoints
+
+**GET /todos**
+- Returns array of all todos
+- Response: `{ "todos": [...] }`
+- Status: 200
+
+**POST /todos**
+- Creates new todo
+- Body: `{ "title": "Todo text" }`
+- Response: `{ "todo": {...} }`
+- Status: 201
+- Validation: Title required, must be non-empty string
+
+**GET /todos/:id**
+- Returns single todo by ID
+- Response: `{ "todo": {...} }`
+- Status: 200 (found) or 404 (not found)
+
+**PATCH /todos/:id**
+- Updates todo (title and/or completed)
+- Body: `{ "title": "New text", "completed": true }`
+- Response: `{ "todo": {...} }`
+- Status: 200 (updated) or 404 (not found)
+
+**DELETE /todos/:id**
+- Deletes todo by ID
+- Response: `{ "message": "Todo deleted" }`
+- Status: 200 (deleted) or 404 (not found)
+
+**GET /**
+- Health check endpoint
+- Response: `{ "message": "Todo API is running", "version": "1.0.0" }`
+- Status: 200
+
+### 3. Error Handling
+
+All endpoints return proper error responses:
+- 400 Bad Request - Invalid input (missing title, invalid data)
+- 404 Not Found - Todo ID doesn't exist
+- 500 Internal Server Error - Unexpected errors
+
+Error format:
+```json
+{
+  "error": "Error message here"
+}
+```
+
+---
+
+## Implementation Requirements
+
+### Project Setup
+
+1. **Initialize Node.js project**
+   - Create `package.json` with proper metadata
+   - Name: `simple-todo-api`
+   - Version: `1.0.0`
+   - Add start script: `"start": "node server.js"`
+
+2. **Install dependencies**
+   - Express (latest stable)
+   - Any other necessary packages
+
+3. **Project structure**
+   ```
+   .
+   ├── package.json
+   ├── server.js (main application)
+   ├── README.md (usage instructions)
+   └── .env.example (if needed)
+   ```
+
+### Server Implementation
+
+**server.js requirements:**
+- Express app listening on port 3002
+- In-memory storage using JavaScript array
+- CORS enabled (for testing from browsers)
+- JSON request body parsing
+- Proper error handling middleware
+- Clean, readable code with comments
+
+### Testing Requirements
+
+**Verification Steps:**
+
+1. **Server starts successfully**
+   - Run `npm install` (no errors)
+   - Run `npm start` (server starts on port 3002)
+   - Browser verification: Visit `http://localhost:3002/` (shows health check)
+
+2. **GET /todos works**
+   - `curl http://localhost:3002/todos`
+   - Returns empty array initially: `{"todos":[]}`
+
+3. **POST /todos works**
+   - Create todo: `curl -X POST http://localhost:3002/todos -H "Content-Type: application/json" -d '{"title":"Test todo"}'`
+   - Returns created todo with id=1, completed=false, createdAt timestamp
+
+4. **GET /todos/:id works**
+   - Fetch created todo: `curl http://localhost:3002/todos/1`
+   - Returns the todo created above
+
+5. **PATCH /todos/:id works**
+   - Update todo: `curl -X PATCH http://localhost:3002/todos/1 -H "Content-Type: application/json" -d '{"completed":true}'`
+   - Returns updated todo with completed=true
+
+6. **DELETE /todos/:id works**
+   - Delete todo: `curl -X DELETE http://localhost:3002/todos/1`
+   - Returns success message
+   - Verify deleted: `curl http://localhost:3002/todos` (empty array)
+
+7. **Error handling works**
+   - Missing title: `curl -X POST http://localhost:3002/todos -H "Content-Type: application/json" -d '{}'`
+   - Should return 400 error
+   - Invalid ID: `curl http://localhost:3002/todos/999`
+   - Should return 404 error
+
+### Documentation
+
+**README.md must include:**
+
+1. Project description
+2. Installation instructions
+   ```bash
+   npm install
+   npm start
+   ```
+3. API endpoint examples with curl commands
+4. Example requests and responses for each endpoint
+5. Port information (3002)
+
+---
+
+## Quality Standards
+
+### Code Quality
+
+- ✅ Clean, readable code
+- ✅ Proper error handling
+- ✅ Input validation
+- ✅ Consistent code style
+- ✅ Comments for complex logic
+- ✅ No hardcoded values (use constants)
+
+### Testing
+
+- ✅ All endpoints verified with browser/curl
+- ✅ Error cases tested
+- ✅ Server starts without errors
+- ✅ All curl examples in README work
+
+### Documentation
+
+- ✅ README has clear setup instructions
+- ✅ All API endpoints documented with examples
+- ✅ Example requests show actual JSON
+- ✅ Port and URLs clearly stated
+
+---
+
+## Success Criteria
+
+Project is complete when:
+
+1. ✅ `npm install` runs successfully
+2. ✅ `npm start` starts server on port 3002
+3. ✅ All 6 API endpoints work correctly
+4. ✅ Error handling returns proper status codes
+5. ✅ README documentation is complete and accurate
+6. ✅ All curl examples work as documented
+7. ✅ Code is clean and well-organized
+8. ✅ Browser can access http://localhost:3002/ (health check)
+
+---
+
+## Expected Timeline
+
+- **Initialization (Session 1):** 3-5 minutes - Create roadmap (3 epics, ~8 tasks)
+- **Coding (Sessions 2-4):** 5-10 minutes - Implement features
+- **Total:** ~10-15 minutes for complete project
+
+This is intentionally simple to enable quick testing of the platform UI/UX without long waiting times.
+
+---
+
+## Notes for Agent
+
+- Keep it simple - no database, just in-memory array
+- Use latest stable Express version
+- Include CORS for browser testing
+- Focus on working code over optimization
+- Verify every endpoint with curl before marking tests complete
+- Use browser verification via Playwright to test endpoints

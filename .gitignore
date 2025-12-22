@@ -1,0 +1,47 @@
+# Agent-generated output directories
+generations/
+
+# Log files
+logs/
+*.jsonl
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Node.js
+node_modules/
+.next/
+.playwright-mcp/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.local.example
+
+# Database
+postgres_data/
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+.claude/commands/next.md
+archive/

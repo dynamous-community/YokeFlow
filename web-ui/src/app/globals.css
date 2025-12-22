@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/* Configure dark mode to use class-based toggling instead of media query */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Custom CSS Variables */
+:root {
+  /* Spacing scale (base unit: 0.25rem = 4px) */
+  --spacing: 0.25rem;
+  --spacing-xs: calc(var(--spacing) * 2);   /* 8px */
+  --spacing-sm: calc(var(--spacing) * 3);   /* 12px */
+  --spacing-md: calc(var(--spacing) * 4);   /* 16px */
+  --spacing-lg: calc(var(--spacing) * 6);   /* 24px */
+  --spacing-xl: calc(var(--spacing) * 8);   /* 32px */
+  --spacing-2xl: calc(var(--spacing) * 12); /* 48px */
+  --spacing-3xl: calc(var(--spacing) * 16); /* 64px */
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+/* Light theme scrollbar */
+::-webkit-scrollbar-track {
+  background: rgb(243 244 246);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(209 213 219);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(156 163 175);
+}
+
+/* Dark theme scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: rgb(17 24 39);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgb(55 65 81);
+  border-radius: 6px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgb(75 85 99);
+}
+
+/* Fade-in animation for tab transitions */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}

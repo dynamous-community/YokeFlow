@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "tessl": {
+      "type": "stdio",
+      "command": "tessl",
+      "args": [
+        "mcp",
+        "start"
+      ]
+    },
+    "task-manager": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "./mcp-task-manager/dist/index.js"
+      ],
+      "env": {
+        "DATABASE_URL": "postgresql://agent:agentpass@localhost:5432/autonomous_coding",
+        "PROJECT_ID": "example-project-id"
+      }
+    }
+  }
+}

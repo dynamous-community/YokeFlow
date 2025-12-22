@@ -1,0 +1,94 @@
+Using pgAdmin for Prompt Improvement Development 🚀
+Key Tables You'll Want to Monitor:
+1. Quality Data (for analysis input):
+-- See which sessions have quality issues
+SELECT 
+    p.name,
+    s.session_number,
+    q.overall_rating,
+    q.playwright_count,
+    q.critical_issues,
+    q.review_text
+FROM session_quality_checks q
+JOIN sessions s ON q.session_id = s.id
+JOIN projects p ON s.project_id = p.id
+WHERE q.check_type = 'deep'
+ORDER BY q.created_at DESC;
+2. Prompt Analyses (track your runs):
+-- View recent prompt analyses
+SELECT * FROM v_recent_analyses;
+
+-- Detailed view of specific analysis
+SELECT 
+    id,
+    status,
+    sessions_analyzed,
+    quality_impact_estimate,
+    overall_findings
+FROM prompt_improvement_analyses
+ORDER BY created_at DESC
+LIMIT 5;
+3. Proposals (review suggestions):
+-- See all pending proposals
+SELECT * FROM v_pending_proposals;
+
+-- Detailed proposal view
+SELECT 
+    prompt_file,
+    section_name,
+    change_type,
+    confidence_level,
+    rationale,
+    original_text,
+    proposed_text
+FROM prompt_proposals
+WHERE status = 'proposed'
+ORDER BY confidence_level DESC;
+Development Workflow with pgAdmin:
+Before Running Analysis:
+Check available projects: SELECT * FROM projects;
+Verify quality data exists: SELECT COUNT(*) FROM session_quality_checks WHERE check_type = 'deep';
+During Analysis (Web UI):
+Run "Analyze Projects" from the Prompt Improvements tab
+Watch in pgAdmin with: SELECT * FROM prompt_improvement_analyses ORDER BY created_at DESC LIMIT 1;
+Monitor status changes
+After Analysis:
+Review proposals in pgAdmin with filtering/sorting
+Export interesting patterns: Right-click → Export
+Test different confidence thresholds
+Useful Views Already Built-In:
+-- Quick summary
+SELECT * FROM v_recent_analyses;
+
+-- Filter by confidence
+SELECT * FROM v_pending_proposals WHERE confidence_level >= 8;
+
+-- See what prompts need work most
+SELECT 
+    prompt_file,
+    COUNT(*) as proposal_count,
+    AVG(confidence_level) as avg_confidence
+FROM prompt_proposals
+WHERE status = 'proposed'
+GROUP BY prompt_file
+ORDER BY proposal_count DESC;
+Testing & Debugging:
+-- Clean up test data
+DELETE FROM prompt_improvement_analyses WHERE triggered_by = 'manual';
+
+-- Check for patterns
+SELECT 
+    patterns_identified,
+    quality_impact_estimate
+FROM prompt_improvement_analyses
+WHERE status = 'completed';
+
+-- Verify data integrity
+SELECT 
+    a.id,
+    a.sessions_analyzed,
+    COUNT(p.id) as actual_proposals
+FROM prompt_improvement_analyses a
+LEFT JOIN prompt_proposals p ON a.id = p.analysis_id
+GROUP BY a.id
+HAVING COUNT(p.id) = 0;  -- Find analyses with no proposals

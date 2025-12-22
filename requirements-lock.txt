@@ -1,0 +1,15 @@
+# Pinned dependencies for reproducible builds
+# Generated with: pip freeze | grep -E "(claude-agent-sdk|Flask|Werkzeug|Jinja2|click|itsdangerous|MarkupSafe|blinker|PyYAML)"
+# To use: pip install -r requirements-lock.txt
+#
+# To update: Install packages with requirements.txt, then regenerate this file
+blinker==1.9.0
+claude-agent-sdk==0.1.13
+click==8.2.1
+click-log==0.4.0
+Flask==3.1.1
+itsdangerous==2.2.0
+Jinja2==3.1.6
+MarkupSafe==3.0.2
+PyYAML==6.0.2
+Werkzeug==3.1.3

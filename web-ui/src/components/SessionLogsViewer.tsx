@@ -1,0 +1,193 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { api } from '@/lib/api';
+import { FileText, Download } from 'lucide-react';
+
+interface LogFile {
+  filename: string;
+  type: 'human' | 'events';
+  sessionNumber: number;
+  timestamp: string;
+}
+
+interface SessionLogsViewerProps {
+  projectId: string;
+}
+
+export function SessionLogsViewer({ projectId }: SessionLogsViewerProps) {
+  const [logs, setLogs] = useState<LogFile[]>([]);
+  const [selectedLog, setSelectedLog] = useState<LogFile | null>(null);
+  const [logContent, setLogContent] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [loadingContent, setLoadingContent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadLogsList();
+  }, [projectId]);
+
+  async function loadLogsList() {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await api.getSessionLogs(projectId);
+      // Map backend response to frontend format
+      const mappedLogs = response.map((log: any) => ({
+        filename: log.filename,
+        type: log.type,
+        sessionNumber: log.session_number,
+        timestamp: log.modified
+      }));
+      setLogs(mappedLogs);
+    } catch (err: any) {
+      console.error('Failed to load logs list:', err);
+      setError(err.message || 'Failed to load logs');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadLogContent(log: LogFile) {
+    try {
+      setLoadingContent(true);
+      setSelectedLog(log);
+      const content = await api.getSessionLogContent(projectId, log.type, log.filename);
+      setLogContent(content);
+    } catch (err: any) {
+      console.error('Failed to load log content:', err);
+      setLogContent(`Error loading log: ${err.message || 'Unknown error'}`);
+    } finally {
+      setLoadingContent(false);
+    }
+  }
+
+  function downloadLog() {
+    if (!selectedLog || !logContent) return;
+
+    const blob = new Blob([logContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = selectedLog.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-12">
+        <div className="text-gray-400">Loading session logs...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-900/20 border border-red-800 rounded-lg p-4">
+        <div className="text-red-400">{error}</div>
+      </div>
+    );
+  }
+
+  if (logs.length === 0) {
+    return (
+      <div className="bg-gray-900 border border-gray-800 rounded-lg p-8 text-center">
+        <FileText className="w-12 h-12 mx-auto text-gray-600 mb-4" />
+        <div className="text-gray-400">No session logs yet</div>
+        <div className="text-gray-500 text-sm mt-2">Logs will appear here after sessions complete</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Log Files List */}
+      <div className="lg:col-span-1">
+        <h3 className="text-lg font-semibold text-gray-200 mb-4">Session Logs</h3>
+        <div className="space-y-2 overflow-y-auto max-h-[600px] pr-2">
+          {logs.map((log) => (
+            <button
+              key={log.filename}
+              onClick={() => loadLogContent(log)}
+              className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
+                selectedLog?.filename === log.filename
+                  ? 'bg-blue-900/30 border-blue-700 text-blue-300'
+                  : 'bg-gray-900 border-gray-800 text-gray-300 hover:bg-gray-800 hover:border-gray-700'
+              }`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">
+                    {log.sessionNumber === 0 ? 'Initialization' : `Session #${log.sessionNumber}`}
+                  </div>
+                  <div className="text-xs mt-1 text-gray-500">
+                    {new Date(log.timestamp).toLocaleString()}
+                  </div>
+                </div>
+                <span
+                  className={`ml-2 px-2 py-1 rounded text-xs font-mono ${
+                    log.type === 'human'
+                      ? 'bg-green-900/30 text-green-400 border border-green-700/50'
+                      : 'bg-purple-900/30 text-purple-400 border border-purple-700/50'
+                  }`}
+                >
+                  {log.type === 'human' ? 'TXT' : 'JSONL'}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Log Content Viewer */}
+      <div className="lg:col-span-2">
+        {selectedLog ? (
+          <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+            {/* Header */}
+            <div className="px-4 py-3 bg-gray-800/50 border-b border-gray-700 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <FileText className="w-5 h-5 text-gray-400" />
+                <div>
+                  <div className="font-medium text-gray-200">{selectedLog.filename}</div>
+                  <div className="text-xs text-gray-500">
+                    {selectedLog.type === 'human' ? 'Human-readable log' : 'Structured events log'}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={downloadLog}
+                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-colors text-sm flex items-center gap-2"
+                title="Download log file"
+              >
+                <Download className="w-4 h-4" />
+                Download
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 overflow-auto max-h-[600px]">
+              {loadingContent ? (
+                <div className="text-gray-400 text-center py-8">Loading log content...</div>
+              ) : (
+                <pre className="text-xs font-mono text-gray-300 whitespace-pre-wrap break-words">
+                  {logContent}
+                </pre>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="bg-gray-900 border border-gray-800 rounded-lg p-12 text-center">
+            <FileText className="w-16 h-16 mx-auto text-gray-600 mb-4" />
+            <div className="text-gray-400">Select a log file to view its content</div>
+            <div className="text-gray-500 text-sm mt-2">
+              Click on a session log from the list to view details
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

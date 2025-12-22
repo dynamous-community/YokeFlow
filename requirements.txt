@@ -1,0 +1,21 @@
+claude-agent-sdk>=0.1.13
+flask>=3.0.0
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# API Server
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+websockets>=12.0
+python-jose[cryptography]>=3.3.0  # JWT token generation and validation
+passlib[bcrypt]>=1.7.4  # Password hashing
+python-multipart>=0.0.6  # For form data parsing
+
+# PostgreSQL Database
+asyncpg>=0.29.0  # High-performance async PostgreSQL driver
+psycopg2-binary>=2.9.9  # PostgreSQL adapter (for migrations/sync operations)
+sqlalchemy>=2.0.0  # ORM (optional, for future use)
+
+# Sandbox Support
+docker>=7.0.0  # Docker SDK for Python (for DockerSandbox)
