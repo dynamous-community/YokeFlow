@@ -253,19 +253,7 @@ class ProjectResetter:
                         self.project_id,
                     )
 
-                    # Delete any github commit records for coding sessions
-                    await conn.execute(
-                        """
-                        DELETE FROM github_commits
-                        WHERE project_id = $1
-                          AND session_id IS NOT NULL
-                          AND session_id IN (
-                              SELECT id FROM sessions
-                              WHERE project_id = $1 AND session_number > 0
-                          )
-                        """,
-                        self.project_id,
-                    )
+                    # Note: github_commits table removed in Migration 007 (never used)
 
             return True, None
 

@@ -97,7 +97,6 @@ class QualityIntegration:
             async with DatabaseManager() as db:
                 check_id = await db.store_quality_check(
                     session_id=session_id,
-                    check_type="quick",
                     metrics=metrics,
                     critical_issues=critical_issues,
                     warnings=warnings,

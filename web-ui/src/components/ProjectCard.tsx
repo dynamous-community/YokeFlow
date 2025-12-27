@@ -5,7 +5,7 @@
 
 import Link from 'next/link';
 import { ProgressBar } from './ProgressBar';
-import { truncate } from '@/lib/utils';
+import { truncate, formatDuration } from '@/lib/utils';
 import type { Project } from '@/lib/types';
 
 interface ProjectCardProps {
@@ -93,6 +93,26 @@ export function ProjectCard({ project }: ProjectCardProps) {
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Next Task:</div>
             <div className="text-sm text-gray-700 dark:text-gray-300">
               {truncate(next_task.description, 80)}
+            </div>
+          </div>
+        )}
+
+        {/* Completion Stats (for completed projects) */}
+        {isComplete && project.total_time_seconds > 0 && (
+          <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+            <div className="flex items-center justify-between text-sm">
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">Time: </span>
+                <span className="text-gray-900 dark:text-gray-100 font-medium">
+                  {formatDuration(project.total_time_seconds)}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">Cost: </span>
+                <span className="text-gray-900 dark:text-gray-100 font-medium">
+                  ${project.total_cost_usd.toFixed(2)}
+                </span>
+              </div>
             </div>
           </div>
         )}

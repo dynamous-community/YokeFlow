@@ -66,9 +66,9 @@ export function EpicAccordion({ epic, tasks, onTaskClick }: EpicAccordionProps) 
         {/* Expand Icon */}
         <div className="mt-1 flex-shrink-0">
           {isExpanded ? (
-            <ChevronDown className="w-5 h-5 text-gray-400" />
+            <ChevronDown className="w-5 h-5 text-gray-600 dark:text-gray-400" />
           ) : (
-            <ChevronRight className="w-5 h-5 text-gray-400" />
+            <ChevronRight className="w-5 h-5 text-gray-600 dark:text-gray-400" />
           )}
         </div>
 
@@ -86,10 +86,10 @@ export function EpicAccordion({ epic, tasks, onTaskClick }: EpicAccordionProps) 
           {/* Progress Stats */}
           <div className="space-y-2">
             <div className="flex items-center gap-4 text-sm">
-              <span className="text-gray-400">
+              <span className="text-gray-600 dark:text-gray-400">
                 Tasks: <span className="text-gray-200 font-medium">{completedTasks}/{totalTasks}</span>
               </span>
-              <span className="text-gray-400">
+              <span className="text-gray-600 dark:text-gray-400">
                 Tests: <span className="text-gray-200 font-medium">{passingTests}/{totalTests}</span>
               </span>
             </div>
@@ -141,7 +141,7 @@ function TaskRow({ task, onTaskClick }: { task: TaskWithTestCount; onTaskClick: 
         {task.done ? (
           <CheckCircle className="w-5 h-5 text-green-400" />
         ) : (
-          <Circle className="w-5 h-5 text-gray-500" />
+          <Circle className="w-5 h-5 text-gray-700 dark:text-gray-500" />
         )}
       </div>
 
@@ -175,7 +175,7 @@ function TaskRow({ task, onTaskClick }: { task: TaskWithTestCount; onTaskClick: 
               )}
               {!task.done && passingTests === 0 && (
                 <>
-                  <XCircle className="w-3 h-3 text-gray-500" />
+                  <XCircle className="w-3 h-3 text-gray-700 dark:text-gray-500" />
                   <span className="text-gray-500 font-medium">
                     {totalTests} test{totalTests !== 1 ? 's' : ''} not run
                   </span>

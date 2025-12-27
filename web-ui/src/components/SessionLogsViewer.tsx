@@ -114,7 +114,7 @@ export function SessionLogsViewer({ projectId }: SessionLogsViewerProps) {
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12">
-        <div className="text-gray-400">Loading session logs...</div>
+        <div className="text-gray-600 dark:text-gray-400">Loading session logs...</div>
       </div>
     );
   }
@@ -131,7 +131,7 @@ export function SessionLogsViewer({ projectId }: SessionLogsViewerProps) {
     return (
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-8 text-center">
         <FileText className="w-12 h-12 mx-auto text-gray-600 mb-4" />
-        <div className="text-gray-400">No session logs yet</div>
+        <div className="text-gray-600 dark:text-gray-400">No session logs yet</div>
         <div className="text-gray-500 text-sm mt-2">Logs will appear here after sessions complete</div>
       </div>
     );
@@ -201,10 +201,10 @@ export function SessionLogsViewer({ projectId }: SessionLogsViewerProps) {
             {/* Header */}
             <div className="px-4 py-3 bg-gray-800/50 border-b border-gray-700 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <FileText className="w-5 h-5 text-gray-400" />
+                <FileText className="w-5 h-5 text-gray-600 dark:text-gray-400" />
                 <div>
                   <div className="font-medium text-gray-200">{selectedLog.filename}</div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-gray-700 dark:text-gray-500">
                     {selectedLog.type === 'human' ? 'Human-readable log' : 'Structured events log'}
                   </div>
                 </div>
@@ -237,7 +237,7 @@ export function SessionLogsViewer({ projectId }: SessionLogsViewerProps) {
         ) : (
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-12 text-center">
             <FileText className="w-16 h-16 mx-auto text-gray-600 mb-4" />
-            <div className="text-gray-400">Select a log file to view its content</div>
+            <div className="text-gray-600 dark:text-gray-400">Select a log file to view its content</div>
             <div className="text-gray-500 text-sm mt-2">
               Click on a session log from the list to view details
             </div>

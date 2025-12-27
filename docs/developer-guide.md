@@ -559,21 +559,11 @@ ORDER BY e.priority;
 
 ### Modifying the Schema
 
-1. Edit `schema/schema.sql`
-2. Test with a new project (auto-copies schema)
-3. For existing projects: migration required
+1. Edit `schema/postgresql/schema.sql`
+2. Test with a fresh database installation
+3. Run `python scripts/init_database.py --docker` to apply schema
 
-**Migration example:**
-```bash
-# Connect to PostgreSQL
-psql $DATABASE_URL
-
-# Add column to existing table
-ALTER TABLE tasks ADD COLUMN new_field TEXT;
-
-# Exit
-\q
-```
+**Important:** Schema changes require a fresh database installation. Existing data cannot be migrated between versions.
 
 ---
 

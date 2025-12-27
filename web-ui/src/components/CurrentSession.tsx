@@ -56,7 +56,7 @@ export function CurrentSession({
               <p className="text-gray-300 font-medium">
                 {isInitializing ? 'Starting Initializer...' : 'Starting Coding Session...'}
               </p>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-700 dark:text-gray-500">
                 This may take up to 60 seconds while the agent session starts
               </p>
             </div>
@@ -67,7 +67,7 @@ export function CurrentSession({
 
     // Default "no session" state
     return (
-      <div className="text-center py-12 text-gray-500">
+      <div className="text-center py-12 text-gray-700 dark:text-gray-500">
         <p>No active session</p>
         <p className="text-sm mt-2">
           {isInitialized
@@ -214,7 +214,7 @@ export function CurrentSession({
                   <StatusIcon className={`w-4 h-4 ${config.color}`} />
                   <span className={config.color}>{config.label}</span>
                 </span>
-                <span className="text-sm text-gray-400">
+                <span className="text-sm text-gray-600 dark:text-gray-400">
                   {session.type} • {session.model.includes('opus') ? 'Opus' : 'Sonnet'}
                 </span>
               </div>
@@ -278,7 +278,7 @@ export function CurrentSession({
 
           {/* Timing */}
           <div className="space-y-2 text-sm">
-            <div className="flex items-center gap-2 text-gray-400">
+            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
               <Clock className="w-4 h-4" />
               <span>
                 Started {new Date(session.started_at || session.created_at).toLocaleString()}
@@ -286,7 +286,7 @@ export function CurrentSession({
             </div>
             {/* Only show duration after session completes (avoid showing stale static value) */}
             {session.started_at && session.status !== 'running' && (
-              <div className="text-gray-400">
+              <div className="text-gray-600 dark:text-gray-400">
                 Duration: {formatDuration(session.started_at, session.ended_at || undefined)}
               </div>
             )}
@@ -361,7 +361,7 @@ export function CurrentSession({
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-gray-700 dark:text-gray-500">
                     <Activity className="w-12 h-12 mx-auto mb-2 opacity-50" />
                     <p>No activity messages yet</p>
                     <p className="text-sm mt-1">Messages will appear here as the session runs</p>
@@ -401,24 +401,24 @@ export function CurrentSession({
                     <div className="text-xs text-gray-400 mb-2">Timestamps</div>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-400">Created:</span>
+                        <span className="text-gray-600 dark:text-gray-400">Created:</span>
                         <span className="text-gray-200">{new Date(session.created_at).toLocaleString()}</span>
                       </div>
                       {session.started_at && (
                         <div className="flex justify-between">
-                          <span className="text-gray-400">Started:</span>
+                          <span className="text-gray-600 dark:text-gray-400">Started:</span>
                           <span className="text-gray-200">{new Date(session.started_at).toLocaleString()}</span>
                         </div>
                       )}
                       {session.ended_at && (
                         <div className="flex justify-between">
-                          <span className="text-gray-400">Ended:</span>
+                          <span className="text-gray-600 dark:text-gray-400">Ended:</span>
                           <span className="text-gray-200">{new Date(session.ended_at).toLocaleString()}</span>
                         </div>
                       )}
                       {session.started_at && (
                         <div className="flex justify-between pt-2 border-t border-gray-600">
-                          <span className="text-gray-400">Duration:</span>
+                          <span className="text-gray-600 dark:text-gray-400">Duration:</span>
                           <span className="text-gray-200 font-medium">
                             {formatDuration(session.started_at, session.ended_at || undefined)}
                           </span>
@@ -457,7 +457,7 @@ export function CurrentSession({
           <h3 className="text-lg font-semibold text-gray-100 mb-3">Next Task</h3>
           <div className="text-gray-300 mb-2">{nextTask.description}</div>
           {nextTask.epic_name && (
-            <div className="text-sm text-gray-500">Epic: {nextTask.epic_name}</div>
+            <div className="text-sm text-gray-700 dark:text-gray-500">Epic: {nextTask.epic_name}</div>
           )}
         </div>
       )}

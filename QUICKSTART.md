@@ -158,7 +158,7 @@ cp .env.example .env
 - [CLAUDE.md](CLAUDE.md) - Quick reference guide
 - [docs/developer-guide.md](docs/developer-guide.md) - Comprehensive technical guide
 - [docs/api-usage.md](docs/api-usage.md) - API documentation
-- [TODO.md](TODO.md) - Roadmap and future features
+- [TODO-FUTURE.md](TODO-FUTURE.md) - Post-release enhancements
 
 ## Getting Help
 
@@ -175,18 +175,17 @@ cp .env.example .env
    ```
    - Resets to state after initialization but before coding started
    - Saves 10-20 minutes by preserving the complete roadmap
-3. **Review session quality:**
-   ```bash
-   python review/review_agent.py --project my_project --session 5 --quick
-   ```
-4. **Monitor with utility scripts:**
+3. **Monitor with utility scripts:**
    ```bash
    python scripts/task_status.py my_project
    ```
-5. **Clean up stuck sessions:**
+4. **Clean up stuck sessions:**
    ```bash
    python scripts/cleanup_sessions.py --project my_project
    ```
+5. **Review session quality:**
+   - Use the Web UI Quality Dashboard (automatic deep reviews)
+   - Access via project detail page → Quality tab
 
 ---
 

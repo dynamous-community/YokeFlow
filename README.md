@@ -27,7 +27,23 @@ Build complete applications using Claude across multiple autonomous sessions. Pr
 
 **Originally forked from Anthropic's autonomous coding demo**, now evolved into YokeFlow with significant enhancements including API-first architecture, PostgreSQL database, agent orchestration, quality review system, and production-ready web interface.
 
-**Current Status: v1.0.0 - Production Ready (December 2025)**
+## Upgrading from v1.0.0
+
+**Important:** Version 1.1.0 includes database schema changes that are not backward compatible. If you are upgrading from v1.0.0:
+
+1. **Export any projects you want to keep** (the generated code in `generations/` directory)
+2. **Back up your database** if you want to preserve v1.0.0 data for reference
+3. **Drop and recreate the database:**
+   ```bash
+   docker-compose down -v  # Remove volumes
+   docker-compose up -d    # Start fresh PostgreSQL
+   python scripts/init_database.py --docker  # Initialize schema
+   ```
+4. Start fresh with v1.1.0
+
+**Why fresh install:** Several tables were modified or removed to improve the platform. Migration scripts have been removed as most users will start fresh with this wider release.
+
+**Current Status: v1.1.0 - Production Ready (December 2025)**
 - ✅ **PostgreSQL Migration**: 100% complete, production-ready async architecture
 - ✅ **Docker Sandbox**: Full integration with 90+ sessions validated
 - ✅ **API Foundation**: REST endpoints, WebSocket support, orchestrator, JWT authentication
@@ -42,16 +58,16 @@ Build complete applications using Claude across multiple autonomous sessions. Pr
   - ✅ Toast notifications and confirmation dialogs (no more alert boxes)
   - ✅ Enhanced metrics (token breakdown, quality trends)
 - ✅ **CLI Tools**: Fully functional for all operations
-- ✅ **Review System** (3 Phases Production Ready):
+- ✅ **Review System** (4 Phases):
   - ✅ **Phase 1**: Quick quality checks (zero-cost, every session)
   - ✅ **Phase 2**: Automated deep reviews (every 5 sessions or quality < 7)
   - ✅ **Phase 3**: Quality dashboard with collapsible reviews and download
-  - ⏳ **Phase 4**: Prompt improvement analysis - Archived for post-release refactoring
+  - ✅ **Phase 4**: Prompt improvement analysis with single-project analysis
 - 🎯 **Next Steps**: Complete pre-release testing, finalize documentation, make repository public
 
 **Note:** This platform is production-ready. The Web UI provides full functionality for project management, monitoring, and quality analysis. Authentication, validation, and comprehensive testing ensure deployment readiness.
 
-See [TODO.md](TODO.md) for detailed roadmap and [CLAUDE.md](CLAUDE.md) for comprehensive guide.
+See [TODO-FUTURE.md](TODO-FUTURE.md) for post-release enhancements and [CLAUDE.md](CLAUDE.md) for comprehensive guide.
 
 ---
 
@@ -364,6 +380,8 @@ DATABASE_URL=postgresql://agent:agent_dev_password@localhost:5432/yokeflow
 # Optional: Default models (can also set in .yokeflow.yaml)
 DEFAULT_INITIALIZER_MODEL=claude-opus-4-5-20251101
 DEFAULT_CODING_MODEL=claude-sonnet-4-5-20250929
+DEFAULT_REVIEW_MODEL=claude-opus-4-5-20251101
+DEFAULT_PROMPT_IMPROVEMENT_MODEL=claude-opus-4-5-20251101
 
 # Optional: API Server settings
 API_HOST=0.0.0.0
@@ -391,6 +409,8 @@ Models can also be set via environment variables in `.env`:
 ```bash
 DEFAULT_INITIALIZER_MODEL=claude-opus-4-5-20251101
 DEFAULT_CODING_MODEL=claude-sonnet-4-5-20250929
+DEFAULT_REVIEW_MODEL=claude-opus-4-5-20251101
+DEFAULT_PROMPT_IMPROVEMENT_MODEL=claude-opus-4-5-20251101
 ```
 
 **Priority:** Web UI selection > `.yokeflow.yaml` > `.env` > Built-in defaults
@@ -428,7 +448,7 @@ yokeflow/
 ├── review/                  # Review system modules
 │   ├── review_client.py     # Automated deep reviews (Phase 2)
 │   ├── review_metrics.py    # Quality metrics (Phase 1)
-│   └── review_agent.py      # Manual review tool
+│   └── prompt_improvement_analyzer.py  # Prompt optimization (Phase 4)
 ├── scripts/                 # Utility tools (debugging/development)
 │   ├── task_status.py       # View task status and progress
 │   ├── reset_project.py     # Reset project to post-init state
@@ -533,7 +553,7 @@ python reset_project.py --project-dir my_project --yes
 ## Customization
 
 **Change the application:**
-Edit `specs/app_spec.txt` to specify what you want to build.
+Upload your specification files via the Web UI when creating a new project.
 
 **Modify security rules:**
 Edit `security.py` - add/remove commands from `BLOCKED_COMMANDS`.
@@ -555,7 +575,6 @@ Edit files in `prompts/` directory.
 - [docs/developer-guide.md](docs/developer-guide.md) - Technical deep-dive
 - [docs/mcp-usage.md](docs/mcp-usage.md) - MCP integration
 - [docs/review-system.md](docs/review-system.md) - Complete review system documentation (4 phases)
-- [YOKEFLOW.md](YOKEFLOW.md) - Transition checklist and release roadmap
 - [TODO-FUTURE.md](TODO-FUTURE.md) - Post-release enhancements
 
 ---
@@ -565,7 +584,7 @@ Edit files in `prompts/` directory.
 **Initialization takes a long time**
 - Creating complete roadmap takes 3-5 minutes
 - Agent stops automatically when done
-- Restart to begin coding sessions
+- Then set Environment variables and start Coding session manually
 
 **Command blocked**
 - Security system working as intended
@@ -581,6 +600,13 @@ Edit files in `prompts/` directory.
 - Ensure PostgreSQL database is running
 - Check projects in database: `psql $DATABASE_URL -c "SELECT * FROM projects;"`
 - Run initialization session to create first project
+
+**Generated applications don't work on different operating systems**
+- Projects built in Docker sandbox use the Linux environment specified in `Dockerfile.agent-sandbox`
+- Applications may require changes when moved to Windows or macOS
+- Node native modules, system dependencies, and OS-specific code may need adjustment
+- For production deployment, rebuild or test in target environment
+- Consider using Docker for consistent cross-platform deployment
 
 ---
 

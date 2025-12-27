@@ -27,8 +27,14 @@ load_dotenv(dotenv_path=_agent_env_file)
 @dataclass
 class ModelConfig:
     """Configuration for Claude models."""
-    initializer: str = "claude-opus-4-5-20251101"
-    coding: str = "claude-sonnet-4-5-20250929"
+    initializer: str = field(default_factory=lambda: os.getenv(
+        "DEFAULT_INITIALIZER_MODEL",
+        "claude-opus-4-5-20251101"
+    ))
+    coding: str = field(default_factory=lambda: os.getenv(
+        "DEFAULT_CODING_MODEL",
+        "claude-sonnet-4-5-20250929"
+    ))
 
 
 @dataclass

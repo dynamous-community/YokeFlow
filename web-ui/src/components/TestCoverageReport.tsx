@@ -81,7 +81,7 @@ export function TestCoverageReport({ projectId }: TestCoverageReportProps) {
     return (
       <div className="text-center py-12">
         <div className="text-gray-500 text-4xl mb-3">📊</div>
-        <p className="text-gray-400">No test coverage data available</p>
+        <p className="text-gray-600 dark:text-gray-400">No test coverage data available</p>
         <p className="text-sm text-gray-500 mt-2">
           Test coverage analysis runs after initialization (Session 0) completes
         </p>
@@ -116,7 +116,7 @@ export function TestCoverageReport({ projectId }: TestCoverageReportProps) {
           Test Coverage Analysis
         </h3>
         {coverage.analyzed_at && (
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-gray-700 dark:text-gray-500">
             Analyzed: {new Date(coverage.analyzed_at).toLocaleString()}
           </span>
         )}
@@ -207,7 +207,7 @@ export function TestCoverageReport({ projectId }: TestCoverageReportProps) {
                         Epic {epic.epic_id}: {epic.epic_name}
                       </span>
                     </div>
-                    <div className="flex items-center gap-4 text-xs text-gray-400">
+                    <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
                       <span>
                         {epic.tasks_without_tests} / {epic.total_tasks} tasks without tests
                       </span>
@@ -262,7 +262,7 @@ export function TestCoverageReport({ projectId }: TestCoverageReportProps) {
             <CheckCircle className="w-5 h-5 text-green-400" />
             <h4 className="font-medium text-gray-100">Excellent Test Coverage!</h4>
           </div>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
             All epics have adequate test coverage (≥50% of tasks have tests)
           </p>
         </div>
@@ -274,19 +274,19 @@ export function TestCoverageReport({ projectId }: TestCoverageReportProps) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-green-500 rounded"></div>
-            <span className="text-gray-400">90%+ Excellent</span>
+            <span className="text-gray-600 dark:text-gray-400">90%+ Excellent</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-blue-500 rounded"></div>
-            <span className="text-gray-400">70-89% Good</span>
+            <span className="text-gray-600 dark:text-gray-400">70-89% Good</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-yellow-500 rounded"></div>
-            <span className="text-gray-400">50-69% Fair</span>
+            <span className="text-gray-600 dark:text-gray-400">50-69% Fair</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 bg-red-500 rounded"></div>
-            <span className="text-gray-400">&lt;50% Poor</span>
+            <span className="text-gray-600 dark:text-gray-400">&lt;50% Poor</span>
           </div>
         </div>
       </div>

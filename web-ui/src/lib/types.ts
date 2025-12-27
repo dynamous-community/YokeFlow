@@ -75,6 +75,8 @@ export interface Project {
   sandbox_type?: string;  // Sandbox type: 'docker', 'local', etc.
   is_initialized: boolean;  // NEW: Whether initialization (Session 1) is complete
   completed_at: string | null;  // Timestamp when all tasks completed
+  total_cost_usd: number;  // Total cost across all sessions
+  total_time_seconds: number;  // Total time in seconds across all sessions
   progress: Progress;
   next_task: Task | null;
   active_sessions: any[];  // TODO: define Session type
@@ -415,32 +417,6 @@ export interface PromptAnalysisDetail extends PromptAnalysisSummary {
 }
 
 /**
- * Prompt version for A/B testing
- */
-export interface PromptVersion {
-  id: string;  // UUID
-  created_at: string;
-
-  prompt_file: string;
-  version_name: string;
-  content: string;
-  git_commit_hash: string | null;
-
-  // Metadata
-  parent_version_id: string | null;
-  changes_summary: string | null;
-  created_by: string | null;
-
-  // Performance tracking
-  projects_using: number;
-  avg_quality_rating: number | null;
-  total_sessions: number;
-
-  is_active: boolean;
-  is_default: boolean;
-}
-
-/**
  * Request to trigger a new analysis
  */
 export interface TriggerAnalysisRequest {
@@ -479,6 +455,38 @@ export interface ApplyProposalResponse {
   file_path?: string;
   backup_path?: string;
   git_commit?: string;
+}
+
+/**
+ * Project review statistics
+ */
+export interface ProjectReviewStats {
+  total_sessions: number;
+  sessions_with_reviews: number;
+  sessions_without_reviews: number;
+  coverage_percent: number;
+  unreviewed_session_numbers: number[];
+}
+
+/**
+ * Request to trigger bulk reviews
+ */
+export interface TriggerBulkReviewsRequest {
+  mode: 'all' | 'unreviewed' | 'last_n' | 'range' | 'single';
+  last_n?: number;  // For 'last_n' mode
+  session_ids?: string[];  // For 'range' mode
+  session_number?: number;  // For 'single' mode
+}
+
+/**
+ * Response from triggering bulk reviews
+ */
+export interface TriggerBulkReviewsResponse {
+  message: string;
+  project_id: string;
+  mode: string;
+  sessions_triggered: number;
+  status: string;
 }
 
 /**

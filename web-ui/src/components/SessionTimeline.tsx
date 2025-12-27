@@ -183,7 +183,7 @@ export function SessionTimeline({ sessions, projectId, onSessionStopped }: Sessi
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 text-sm text-gray-500">
+              <div className="flex items-center gap-4 text-sm text-gray-700 dark:text-gray-500">
                 {session.created_at && (
                   <span>{formatRelativeTime(session.created_at)}</span>
                 )}
@@ -211,7 +211,7 @@ export function SessionTimeline({ sessions, projectId, onSessionStopped }: Sessi
                 >
                   <span>{isExpanded ? '▼' : '▶'} {isExpanded ? 'Hide' : 'Show'} Metrics</span>
                   {!isExpanded && displayMetrics.length > 0 && (
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-gray-700 dark:text-gray-500">
                       {displayMetrics.slice(0, 2).map(m => `${m.value} ${m.label.toLowerCase()}`).join(', ')}
                     </span>
                   )}

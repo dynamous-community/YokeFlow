@@ -25,12 +25,14 @@ import type {
   PromptAnalysisSummary,
   PromptAnalysisDetail,
   PromptProposal,
-  PromptVersion,
   TriggerAnalysisRequest,
   TriggerAnalysisResponse,
   UpdateProposalRequest,
   ApplyProposalResponse,
   ImprovementMetrics,
+  ProjectReviewStats,
+  TriggerBulkReviewsRequest,
+  TriggerBulkReviewsResponse,
   Screenshot,
   ContainerStatus,
   ContainerActionResponse,
@@ -436,21 +438,25 @@ class ApiClient {
   }
 
   /**
-   * List versions of a prompt file
+   * Get project review statistics
    */
-  async listPromptVersions(promptFile: string): Promise<PromptVersion[]> {
-    const response = await this.client.get<PromptVersion[]>(
-      `/api/prompt-improvements/versions?prompt_file=${promptFile}`
+  async getProjectReviewStats(projectId: string): Promise<ProjectReviewStats> {
+    const response = await this.client.get<ProjectReviewStats>(
+      `/api/projects/${projectId}/review-stats`
     );
     return response.data;
   }
 
   /**
-   * Activate a specific prompt version
+   * Trigger bulk deep reviews for a project
    */
-  async activatePromptVersion(versionId: string): Promise<PromptVersion> {
-    const response = await this.client.post<PromptVersion>(
-      `/api/prompt-improvements/versions/${versionId}/activate`
+  async triggerBulkReviews(
+    projectId: string,
+    request: TriggerBulkReviewsRequest
+  ): Promise<TriggerBulkReviewsResponse> {
+    const response = await this.client.post<TriggerBulkReviewsResponse>(
+      `/api/projects/${projectId}/trigger-reviews`,
+      request
     );
     return response.data;
   }

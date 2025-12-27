@@ -324,7 +324,7 @@ export default function ProjectDetailPage() {
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading project...</p>
+          <p className="text-gray-600 dark:text-gray-400">Loading project...</p>
         </div>
       </div>
     );
@@ -336,8 +336,8 @@ export default function ProjectDetailPage() {
       <div className="flex items-center justify-center py-12">
         <div className="text-center max-w-md">
           <div className="text-red-500 text-5xl mb-4">⚠️</div>
-          <h2 className="text-xl font-semibold text-gray-100 mb-2">Project Not Found</h2>
-          <p className="text-gray-400 mb-4">{error || 'Project does not exist'}</p>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Project Not Found</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">{error || 'Project does not exist'}</p>
           <Link
             href="/"
             className="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
@@ -355,7 +355,7 @@ export default function ProjectDetailPage() {
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <div className="text-4xl mb-4">⏳</div>
-          <p className="text-gray-400">Loading project...</p>
+          <p className="text-gray-600 dark:text-gray-400">Loading project...</p>
         </div>
       </div>
     );
@@ -399,7 +399,7 @@ export default function ProjectDetailPage() {
                     if (e.key === 'Enter') handleSaveRename();
                     if (e.key === 'Escape') handleCancelRename();
                   }}
-                  className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-gray-100 text-xl font-semibold focus:outline-none focus:border-blue-500"
+                  className="px-2 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-gray-900 dark:text-gray-100 text-xl font-semibold focus:outline-none focus:border-blue-500"
                   autoFocus
                   disabled={isRenamingProject}
                 />
@@ -420,13 +420,13 @@ export default function ProjectDetailPage() {
               </div>
             ) : (
               <div className="flex items-center gap-2 group">
-                <span className="text-gray-100 text-xl font-semibold">{project.name}</span>
+                <span className="text-gray-900 dark:text-gray-100 text-xl font-semibold">{project.name}</span>
                 <button
                   onClick={handleStartRename}
                   className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-gray-700 rounded"
                   title="Rename project (note: directory name in generations/ folder will not change)"
                 >
-                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                   </svg>
                 </button>
@@ -470,7 +470,7 @@ export default function ProjectDetailPage() {
             className={`px-4 py-2 rounded-lg transition-colors font-medium flex items-center gap-2 ${
               activePanel === 'project'
                 ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                : 'bg-gray-700 hover:bg-gray-600 text-gray-100'
+                : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100'
             }`}
             title={activePanel === 'session' ? 'View Settings, Environment, and Project Roadmap' : 'View Session Details'}
           >
@@ -624,11 +624,11 @@ export default function ProjectDetailPage() {
 
       {/* Progress Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <div className="text-3xl font-bold text-gray-100 mb-1">
+        <div className="bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-800 rounded-lg p-4">
+          <div className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">
             {progress.completed_epics}/{progress.total_epics}
           </div>
-          <div className="text-xs text-gray-500 mb-3">Epics Completed</div>
+          <div className="text-xs text-gray-700 dark:text-gray-500 mb-3">Epics Completed</div>
           <ProgressBar
             value={(progress.completed_epics / progress.total_epics) * 100 || 0}
             className="h-2"
@@ -637,11 +637,11 @@ export default function ProjectDetailPage() {
           />
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <div className="text-3xl font-bold text-gray-100 mb-1">
+        <div className="bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-800 rounded-lg p-4">
+          <div className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">
             {progress.completed_tasks}/{progress.total_tasks}
           </div>
-          <div className="text-xs text-gray-500 mb-3">Tasks Completed</div>
+          <div className="text-xs text-gray-700 dark:text-gray-500 mb-3">Tasks Completed</div>
           <ProgressBar
             value={progress.task_completion_pct}
             className="h-2"
@@ -650,11 +650,11 @@ export default function ProjectDetailPage() {
           />
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <div className="text-3xl font-bold text-gray-100 mb-1">
+        <div className="bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-800 rounded-lg p-4">
+          <div className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">
             {progress.passing_tests}/{progress.total_tests}
           </div>
-          <div className="text-xs text-gray-500 mb-3">Tests Passing</div>
+          <div className="text-xs text-gray-700 dark:text-gray-500 mb-3">Tests Passing</div>
           <ProgressBar
             value={progress.test_pass_pct}
             className="h-2"
@@ -688,7 +688,7 @@ export default function ProjectDetailPage() {
               }`}
             >
               History
-              <span className="ml-2 text-sm text-gray-500">({sessions.length})</span>
+              <span className="ml-2 text-sm text-gray-700 dark:text-gray-500">({sessions.length})</span>
             </button>
             <button
               onClick={() => setActiveTab('quality')}

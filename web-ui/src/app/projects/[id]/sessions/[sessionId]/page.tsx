@@ -64,7 +64,7 @@ export default function SessionDetailPage() {
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading session logs...</p>
+          <p className="text-gray-600 dark:text-gray-400">Loading session logs...</p>
         </div>
       </div>
     );
@@ -104,7 +104,7 @@ export default function SessionDetailPage() {
       content: (
         <div className="space-y-3">
           {sessionLog.events.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">No events recorded</div>
+            <div className="text-center py-8 text-gray-700 dark:text-gray-500">No events recorded</div>
           ) : (
             sessionLog.events.map((event, index) => (
               <div
@@ -116,7 +116,7 @@ export default function SessionDetailPage() {
                     <span className="px-2 py-0.5 text-xs rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
                       {event.type}
                     </span>
-                    <span className="text-sm text-gray-500">
+                    <span className="text-sm text-gray-700 dark:text-gray-500">
                       {formatDate(event.timestamp)}
                     </span>
                   </div>
@@ -154,7 +154,7 @@ export default function SessionDetailPage() {
                     <span className="px-2 py-0.5 text-xs rounded bg-red-500/20 text-red-400 border border-red-500/30">
                       {error.type}
                     </span>
-                    <span className="text-sm text-gray-500">
+                    <span className="text-sm text-gray-700 dark:text-gray-500">
                       {formatDate(error.timestamp)}
                     </span>
                   </div>
@@ -192,7 +192,7 @@ export default function SessionDetailPage() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-3xl font-bold mb-2">Session #{sessionNumber}</h1>
-            <div className="flex items-center gap-3 text-sm text-gray-400">
+            <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
               <span>Session ID: {sessionId}</span>
             </div>
           </div>

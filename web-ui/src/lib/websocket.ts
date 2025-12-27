@@ -27,6 +27,9 @@ interface UseProjectWebSocketOptions {
   // Real-time task/test progress callbacks
   onTaskUpdated?: (taskId: number, done: boolean) => void;
   onTestUpdated?: (testId: number, passes: boolean) => void;
+  // Prompt improvement callbacks
+  onPromptImprovementComplete?: (analysisId: string, proposalsCount: number) => void;
+  onPromptImprovementFailed?: (analysisId: string, error: string) => void;
 }
 
 export function useProjectWebSocket(
@@ -51,6 +54,8 @@ export function useProjectWebSocket(
   const onToolUseRef = useRef(options?.onToolUse);
   const onTaskUpdatedRef = useRef(options?.onTaskUpdated);
   const onTestUpdatedRef = useRef(options?.onTestUpdated);
+  const onPromptImprovementCompleteRef = useRef(options?.onPromptImprovementComplete);
+  const onPromptImprovementFailedRef = useRef(options?.onPromptImprovementFailed);
 
   useEffect(() => {
     onSessionCompleteRef.current = options?.onSessionComplete;
@@ -59,7 +64,9 @@ export function useProjectWebSocket(
     onToolUseRef.current = options?.onToolUse;
     onTaskUpdatedRef.current = options?.onTaskUpdated;
     onTestUpdatedRef.current = options?.onTestUpdated;
-  }, [options?.onSessionComplete, options?.onSessionStarted, options?.onAssistantMessage, options?.onToolUse, options?.onTaskUpdated, options?.onTestUpdated]);
+    onPromptImprovementCompleteRef.current = options?.onPromptImprovementComplete;
+    onPromptImprovementFailedRef.current = options?.onPromptImprovementFailed;
+  }, [options?.onSessionComplete, options?.onSessionStarted, options?.onAssistantMessage, options?.onToolUse, options?.onTaskUpdated, options?.onTestUpdated, options?.onPromptImprovementComplete, options?.onPromptImprovementFailed]);
 
   const connect = useCallback(() => {
     if (!projectId) return;
@@ -210,6 +217,21 @@ export function useProjectWebSocket(
               // Trigger callback if provided
               if (onTestUpdatedRef.current && data.test_id !== undefined && data.passes !== undefined) {
                 onTestUpdatedRef.current(data.test_id, data.passes);
+              }
+              break;
+
+            // Prompt improvement events
+            case 'prompt_improvement_complete':
+              console.log(`[WebSocket] Prompt improvement analysis complete:`, data.analysis_id);
+              if (onPromptImprovementCompleteRef.current && data.analysis_id) {
+                onPromptImprovementCompleteRef.current(data.analysis_id, data.proposals_count || 0);
+              }
+              break;
+
+            case 'prompt_improvement_failed':
+              console.error(`[WebSocket] Prompt improvement analysis failed:`, data.error);
+              if (onPromptImprovementFailedRef.current && data.analysis_id) {
+                onPromptImprovementFailedRef.current(data.analysis_id, data.error || 'Unknown error');
               }
               break;
           }

@@ -14,8 +14,7 @@ This module integrates with the orchestrator to provide:
 
 Architecture:
 - Called by orchestrator.py after session completion
-- Uses Anthropic client (not Agent SDK) for review
-- Stores results in session_quality_checks table
+- Stores results in session_deep_reviews table
 - Non-blocking: runs asynchronously, doesn't slow down sessions
 
 Usage:
@@ -32,6 +31,7 @@ Usage:
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from datetime import datetime
@@ -40,9 +40,272 @@ from uuid import UUID
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 from core.database_connection import DatabaseManager
-from review.review_metrics import analyze_session_logs, quick_quality_check, get_quality_rating
+
 
 logger = logging.getLogger(__name__)
+
+def analyze_session_logs(jsonl_path: Path) -> Dict[str, Any]:
+    """
+    Extract key metrics from session JSONL log.
+
+    Parses the complete event stream to extract:
+    - Tool usage counts by type
+    - Error types seen (for context in reviews)
+    - Enhanced context for deep reviews (REFACTORED Dec 25, 2025)
+
+    NOTE: This now extracts enhanced data for review context optimization.
+    Most aggregate metrics (tool_calls_count, errors_count) are still in database,
+    but we extract detailed patterns for better prompt improvement recommendations.
+
+    Args:
+        jsonl_path: Path to session JSONL log file
+
+    Returns:
+        Dict with session metrics:
+        {
+            'tool_counts': {tool_name: count},
+            'errors_seen': [error_message_samples],
+            'enhanced_data': {
+                'errors': [detailed error context],
+                'task_timeline': {task_id: {...}},
+                'browser_events': [timing and patterns],
+                'adherence_issues': [prompt violations],
+                'key_events': [important session moments]
+            }
+        }
+
+    """
+    tool_counts = {}
+    error_types = []
+
+    # Enhanced data for context optimization
+    errors = []
+    task_timeline = {}
+    browser_events = []
+    key_events = []
+    adherence_issues = []
+
+    # State tracking
+    current_task = None
+    last_tool = None
+    error_messages_seen = set()
+    prompt_file = 'unknown'
+    prompt_version = 'unknown'
+    model = 'unknown'
+    commit_count = 0
+    last_commit_message = ''
+
+    with open(jsonl_path, 'r') as f:
+        for line in f:
+            if not line.strip():
+                continue
+
+            try:
+                event = json.loads(line)
+                event_type = event.get('event')
+                timestamp = event.get('timestamp', '')
+
+                # SESSION START - Extract prompt info and model
+                if event_type == 'session_start':
+                    prompt_file = event.get('prompt_file', 'unknown')
+                    # Extract model from session_start event
+                    model = event.get('model', 'unknown')
+                    # Extract version from prompt metadata if available
+                    prompt_version = event.get('prompt_version', 'unknown')
+                    key_events.append({
+                        'time': timestamp,
+                        'type': 'session_start',
+                        'desc': f"Session started with {prompt_file} ({model})"
+                    })
+
+                # TOOL USE - Track for error context and patterns
+                elif event_type == 'tool_use':
+                    tool_name = event.get('tool_name')
+                    if tool_name:
+                        tool_counts[tool_name] = tool_counts.get(tool_name, 0) + 1
+                        last_tool = tool_name
+
+                        # Get parameters - MCP tools use 'input' field, others use 'parameters'
+                        params = event.get('input') or event.get('parameters') or {}
+
+                        # Track task lifecycle
+                        if tool_name == 'mcp__task-manager__start_task':
+                            task_id = params.get('task_id')
+                            if task_id:
+                                current_task = str(task_id)
+                                task_timeline[current_task] = {
+                                    'start_time': timestamp,
+                                    'browser_verifications': [],
+                                    'tests_marked': [],
+                                    'completion_time': None
+                                }
+                                key_events.append({
+                                    'time': timestamp,
+                                    'type': 'task_start',
+                                    'desc': f"Started task {task_id}"
+                                })
+
+                        # Track browser verification
+                        elif tool_name.startswith('mcp__playwright__'):
+                            if current_task and current_task in task_timeline:
+                                task_timeline[current_task]['browser_verifications'].append({
+                                    'time': timestamp,
+                                    'tool': tool_name
+                                })
+                            browser_events.append({
+                                'time': timestamp,
+                                'tool': tool_name,
+                                'task': current_task
+                            })
+
+                        # Track test marking
+                        elif tool_name == 'mcp__task-manager__update_test_result':
+                            if current_task and current_task in task_timeline:
+                                task_timeline[current_task]['tests_marked'].append(timestamp)
+
+                        # Track task completion
+                        elif tool_name == 'mcp__task-manager__update_task_status':
+                            done_param = params.get('done')
+                            if done_param and current_task and current_task in task_timeline:
+                                task_timeline[current_task]['completion_time'] = timestamp
+                                key_events.append({
+                                    'time': timestamp,
+                                    'type': 'task_complete',
+                                    'desc': f"Completed task {current_task}"
+                                })
+
+                        # Check for prompt violations - Using Bash instead of bash_docker
+                        elif tool_name == 'Bash':
+                            # This is only a violation in Docker mode, but we'll flag it for review
+                            adherence_issues.append({
+                                'type': 'wrong_tool',
+                                'issue': 'Used Bash tool (check if Docker mode - should use bash_docker)',
+                                'timestamp': timestamp
+                            })
+
+                        # Check for /workspace/ prefix in file operations
+                        elif tool_name in ['Read', 'Write', 'Edit']:
+                            file_path = params.get('file_path', '')
+                            if '/workspace/' in file_path:
+                                adherence_issues.append({
+                                    'type': 'path_error',
+                                    'issue': f'{tool_name} used /workspace/ prefix (should use relative path)',
+                                    'timestamp': timestamp,
+                                    'path': file_path
+                                })
+
+                # TOOL RESULT - Capture errors with context
+                elif event_type == 'tool_result' and event.get('is_error'):
+                    error_msg = event.get('content', '')[:500]  # More than previous 100 chars
+                    error_hash = hash(error_msg[:100])  # Check for duplicates
+
+                    # Add to both old format (for compatibility) and new format
+                    error_types.append(error_msg[:100])
+
+                    errors.append({
+                        'tool': last_tool,
+                        'message': error_msg,
+                        'timestamp': timestamp,
+                        'is_repeated': error_hash in error_messages_seen,
+                        'task': current_task
+                    })
+                    error_messages_seen.add(error_hash)
+
+                    key_events.append({
+                        'time': timestamp,
+                        'type': 'error',
+                        'desc': f"Error in {last_tool}: {error_msg[:80]}"
+                    })
+
+            except json.JSONDecodeError:
+                # Skip malformed lines
+                continue
+
+    # Calculate browser verification patterns
+    screenshot_count = sum(1 for e in browser_events if 'screenshot' in e['tool'].lower())
+    console_check_count = sum(1 for e in browser_events if 'console' in e['tool'].lower())
+
+    # Analyze screenshot timing relative to task completion
+    screenshots_before = 0
+    screenshots_after = 0
+    for task_id, timeline in task_timeline.items():
+        completion = timeline['completion_time']
+        if not completion:
+            continue
+        for verif in timeline['browser_verifications']:
+            if 'screenshot' in verif['tool'].lower():
+                if verif['time'] < completion:
+                    screenshots_before += 1
+                else:
+                    screenshots_after += 1
+
+    total_screenshots = screenshots_before + screenshots_after
+    screenshots_before_pct = screenshots_before / total_screenshots if total_screenshots > 0 else 0
+
+    # Check for good navigation pattern (navigate followed by screenshot)
+    has_good_pattern = _check_nav_screenshot_pattern(browser_events)
+
+    return {
+        'tool_counts': tool_counts,
+        'errors_seen': list(set(error_types)),
+        'enhanced_data': {
+            'prompt_file': prompt_file,
+            'prompt_version': prompt_version,
+            'model': model,
+            'errors': errors,
+            'task_timeline': task_timeline,
+            'screenshot_count': screenshot_count,
+            'screenshots_before_completion': screenshots_before,
+            'screenshots_after_completion': screenshots_after,
+            'screenshots_before_pct': screenshots_before_pct,
+            'screenshots_after_pct': 1 - screenshots_before_pct,
+            'console_check_count': console_check_count,
+            'has_good_nav_pattern': 'YES ✅' if has_good_pattern else 'NO ⚠️',
+            'adherence_checks': adherence_issues,
+            'commit_count': commit_count,
+            'last_commit_message': last_commit_message,
+            'key_events': key_events[:20]  # Limit to 20 most important events
+        }
+    }
+
+def _check_nav_screenshot_pattern(browser_events: List[Dict]) -> bool:
+    """
+    Check if browser events show good Navigate → Screenshot pattern.
+
+    A good pattern is when navigate is followed by screenshot within a reasonable time.
+    """
+    if len(browser_events) < 2:
+        return False
+
+    # Count navigate->screenshot pairs
+    nav_screenshot_pairs = 0
+    for i in range(len(browser_events) - 1):
+        current = browser_events[i]
+        next_event = browser_events[i + 1]
+
+        if 'navigate' in current['tool'].lower() and 'screenshot' in next_event['tool'].lower():
+            nav_screenshot_pairs += 1
+
+    # If we have at least 2 navigate->screenshot patterns, that's good
+    return nav_screenshot_pairs >= 2
+
+
+def _format_duration(start_time: str, end_time: str) -> str:
+    """Format duration between two ISO timestamps."""
+    try:
+        from datetime import datetime
+        start = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+        end = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+        duration = (end - start).total_seconds()
+
+        if duration < 60:
+            return f"{duration:.0f}s"
+        elif duration < 3600:
+            return f"{duration/60:.1f}m"
+        else:
+            return f"{duration/3600:.1f}h"
+    except:
+        return "unknown"
 
 
 def create_review_client(model: str) -> ClaudeSDKClient:
@@ -81,7 +344,7 @@ def create_review_client(model: str) -> ClaudeSDKClient:
 async def run_deep_review(
     session_id: UUID,
     project_path: Path,
-    model: str = "claude-sonnet-4-5-20250929"
+    model: str = None
 ) -> Dict[str, Any]:
     """
     Run deep review on a completed session using Claude.
@@ -114,7 +377,11 @@ async def run_deep_review(
         FileNotFoundError: If session logs not found
         RuntimeError: If Claude SDK authentication not configured
     """
-    logger.info(f"Starting deep review for session {session_id}")
+    # Use DEFAULT_REVIEW_MODEL from env if model not specified
+    if model is None:
+        model = os.getenv('DEFAULT_REVIEW_MODEL', 'claude-sonnet-4-5-20250929')
+
+    logger.info(f"Starting deep review for session {session_id} using model {model}")
 
     # Get session info from database
     async with DatabaseManager() as db:
@@ -130,6 +397,20 @@ async def run_deep_review(
             session_number = session['session_number']
             session_type = session['type']
             project_id = session['project_id']
+
+            session_dict = dict(session)
+            # Parse metrics JSONB field (asyncpg returns it as a string)
+            if 'metrics' in session_dict and isinstance(session_dict['metrics'], str):
+                try:
+                    session_dict['metrics'] = json.loads(session_dict['metrics'])
+                except (json.JSONDecodeError, TypeError):
+                    session_dict['metrics'] = {}
+            session_metrics = session_dict.get('metrics', {})
+
+            # Calculate error rate from database metrics and add to session_metrics
+            error_rate = session_metrics.get('errors_count', 0) / session_metrics.get('tool_calls_count', 0) if session_metrics.get('tool_calls_count', 0) > 0 else 0
+            session_metrics['error_rate'] = error_rate
+
 
     # Find session logs
     logs_dir = project_path / "logs"
@@ -150,19 +431,8 @@ async def run_deep_review(
     # Extract metrics from JSONL log
     metrics = analyze_session_logs(jsonl_path)
 
-    # Run quick quality check
-    is_initializer = session_type == "initializer"
-    issues = quick_quality_check(metrics, is_initializer=is_initializer)
-    critical_issues = [i for i in issues if i.startswith("❌")]
-    warnings = [i for i in issues if i.startswith("⚠️")]
-    overall_rating = get_quality_rating(metrics)
-
-    # Read session log excerpt for context
-    session_log_excerpt = ""
-    if txt_path and txt_path.exists():
-        with open(txt_path, 'r') as f:
-            # Read first 5000 chars for context
-            session_log_excerpt = f.read(5000)
+    # Extract model from enhanced data
+    model = metrics.get('enhanced_data', {}).get('model', 'unknown')
 
     # Create review context with all data
     context = _create_review_context(
@@ -170,16 +440,28 @@ async def run_deep_review(
         session_number=session_number,
         session_type=session_type,
         metrics=metrics,
-        critical_issues=critical_issues,
-        warnings=warnings,
-        session_log_excerpt=session_log_excerpt
+        session_metrics=session_metrics,
     )
 
-    # Construct review prompt (DO NOT use review_prompt.md - it's for interactive tool-using agents)
-    # This prompt is for automated analysis with all data provided upfront
-    full_prompt = f"""# Deep Session Review - Session {session_number}
+    # Load review prompt from external file
+    # NOTE: This prompt was designed for interactive agents, but works well for automated reviews too
+    # The client is configured with mcp_servers={} and max_turns=1, so no tool use will occur
+    review_prompt_path = Path(__file__).parent.parent / "prompts" / "review_prompt.md"
 
-You are analyzing a completed YokeFlow coding agent session. All necessary data is provided below.
+    if not review_prompt_path.exists():
+        logger.warning(f"Review prompt not found at {review_prompt_path}, using inline prompt")
+        review_base_prompt = _get_fallback_review_prompt()
+    else:
+        logger.info(f"Loading review prompt from {review_prompt_path}")
+        with open(review_prompt_path, 'r') as f:
+            review_base_prompt = f.read()
+
+    # Construct full prompt with context
+    full_prompt = f"""{review_base_prompt}
+
+---
+
+# REVIEW DATA FOR SESSION {session_number}
 
 {context}
 
@@ -187,52 +469,17 @@ You are analyzing a completed YokeFlow coding agent session. All necessary data 
 
 ## YOUR TASK
 
-Analyze this session and provide a comprehensive review focusing on:
+Analyze this session using the framework above. All necessary data is provided - DO NOT attempt to use tools.
 
-### 1. Session Quality Rating (1-10)
-Rate the overall session quality with justification based on:
-- Browser verification usage (20 Playwright calls = good, 0 = critical issue)
-- Error rate (4.7% shown above)
-- Task completion quality
-- Prompt adherence
+Provide a comprehensive review focusing on:
 
-### 2. Browser Verification Analysis
-**Critical Quality Indicator** (r=0.98 correlation with session quality):
-- How many Playwright calls were made? ({metrics.get('playwright_count', 0)} shown above)
-- Were screenshots taken before AND after changes?
-- Were user interactions tested (clicks, forms)?
-- Was verification done BEFORE marking tests passing?
+1. **Session Quality Rating (1-10)** - Based on browser verification ({metrics.get('playwright_count', 0)} Playwright calls), error rate, task completion
+2. **Browser Verification Analysis** - Critical quality indicator (r=0.98 correlation)
+3. **Error Pattern Analysis** - What types, were they preventable, recovery efficiency
+4. **Prompt Adherence** - Which steps followed well, which skipped
+5. **Concrete Prompt Improvements** - Specific changes to `coding_prompt.md`
 
-### 3. Error Pattern Analysis
-- What types of errors occurred?
-- Were they preventable with better prompt guidance?
-- Did the agent recover efficiently?
-
-### 4. Prompt Adherence
-- Which steps from the coding prompt were followed well?
-- Which were skipped or done poorly?
-- What prompt guidance would have prevented issues?
-
-### 5. Concrete Prompt Improvements
-Provide specific, actionable changes to `coding_prompt.md` that would improve future sessions.
-
----
-
-## OUTPUT FORMAT
-
-**IMPORTANT:** End your review with a structured recommendations section:
-
-## RECOMMENDATIONS
-
-### High Priority
-- [Specific actionable recommendation with before/after example]
-- [Another high-priority improvement]
-
-### Medium Priority
-- [Medium-priority suggestion]
-
-### Low Priority
-- [Nice-to-have improvement]
+**IMPORTANT:** End with structured RECOMMENDATIONS section (High/Medium/Low Priority) with specific, actionable changes.
 
 Focus on **systematic improvements** that help ALL future sessions, not fixes for this specific application.
 """
@@ -241,7 +488,6 @@ Focus on **systematic improvements** that help ALL future sessions, not fixes fo
     client = create_review_client(model)
 
     logger.info(f"Calling Claude SDK ({model}) for deep analysis...")
-    logger.info("Note: System prompt instructs Claude NOT to use tools - expecting text-only response")
 
     # Call Claude using Agent SDK
     try:
@@ -259,19 +505,15 @@ Focus on **systematic improvements** that help ALL future sessions, not fixes fo
                 message_count += 1
                 msg_type = type(msg).__name__
 
-                logger.debug(f"Received message #{message_count}: {msg_type}")
-
                 # Handle AssistantMessage
                 if msg_type == "AssistantMessage" and hasattr(msg, "content"):
                     for block in msg.content:
                         block_type = type(block).__name__
-                        logger.debug(f"  Block type: {block_type}")
 
                         if block_type == "TextBlock" and hasattr(block, "text"):
                             text_block_count += 1
                             block_text = block.text
                             review_text += block_text
-                            logger.debug(f"  Collected text block #{text_block_count} ({len(block_text)} chars)")
                         elif block_type == "ToolUseBlock":
                             tool_use_attempts += 1
                             logger.warning(f"Claude attempted to use a tool despite instruction not to (attempt #{tool_use_attempts})")
@@ -286,22 +528,27 @@ Focus on **systematic improvements** that help ALL future sessions, not fixes fo
         logger.error(f"Claude SDK call failed: {e}")
         raise
 
-    # Extract rating from review if present
-    parsed_rating = _extract_rating_from_review(review_text)
-    if parsed_rating:
-        overall_rating = parsed_rating
+    # Extract executive summary for structured storage
+    review_summary = _extract_executive_summary(review_text)
 
-    # Store in database (prompt_improvements extracted separately by prompt improvement system)
+    # Extract rating from review if present (default to 5 if not found)
+    # Prefer rating from executive summary, fall back to general extraction
+    overall_rating = review_summary.get('rating') or _extract_rating_from_review(review_text) or 5
+
+    # Parse recommendations from review text
+    prompt_improvements = _parse_recommendations(review_text)
+
+    # Store in database
     async with DatabaseManager() as db:
         check_id = await db.store_deep_review(
             session_id=session_id,
             metrics=metrics,
-            critical_issues=critical_issues,
-            warnings=warnings,
             overall_rating=overall_rating,
             review_text=review_text,
-            prompt_improvements=[],  # Extracted separately by prompt improvement system
-            check_version="2.0"
+            prompt_improvements=prompt_improvements,  # Extracted from RECOMMENDATIONS section
+            review_summary=review_summary,  # Extracted from Executive Summary section
+            review_version="2.0",
+            model=model  # Model extracted from JSONL
         )
 
     logger.info(f"Deep review stored: {check_id}")
@@ -309,10 +556,68 @@ Focus on **systematic improvements** that help ALL future sessions, not fixes fo
     return {
         'check_id': check_id,
         'overall_rating': overall_rating,
-        'critical_issues': critical_issues,
-        'warnings': warnings,
         'review_text': review_text
     }
+
+
+def _get_fallback_review_prompt() -> str:
+    """
+    Fallback review prompt if external file not found.
+
+    This is a minimal prompt - the external file has much more detail.
+    """
+    return """# Deep Session Review
+
+You are analyzing a completed YokeFlow coding agent session. All necessary data is provided below.
+
+## YOUR TASK
+
+Analyze this session and provide a comprehensive review focusing on:
+
+### 1. Session Quality Rating (1-10)
+Rate the overall session quality based on:
+- Browser verification usage (Playwright calls)
+- Error rate
+- Task completion quality
+- Prompt adherence
+
+### 2. Browser Verification Analysis
+**Critical Quality Indicator** (r=0.98 correlation with session quality):
+- How many Playwright calls were made?
+- Were screenshots taken before AND after changes?
+- Were user interactions tested (clicks, forms)?
+- Was verification done BEFORE marking tests passing?
+
+### 3. Error Pattern Analysis
+- What types of errors occurred?
+- Were they preventable with better prompt guidance?
+- Did the agent recover efficiently?
+
+### 4. Prompt Adherence
+- Which steps from the coding prompt were followed well?
+- Which were skipped or done poorly?
+- What prompt guidance would have prevented issues?
+
+### 5. Concrete Prompt Improvements
+Provide specific, actionable changes to `coding_prompt.md` that would improve future sessions.
+
+## OUTPUT FORMAT
+
+**IMPORTANT:** End your review with a structured recommendations section:
+
+## RECOMMENDATIONS
+
+### High Priority
+- [Specific actionable recommendation with before/after example]
+
+### Medium Priority
+- [Medium-priority suggestion]
+
+### Low Priority
+- [Nice-to-have improvement]
+
+Focus on **systematic improvements** that help ALL future sessions, not fixes for this specific application.
+"""
 
 
 def _create_review_context(
@@ -320,82 +625,138 @@ def _create_review_context(
     session_number: int,
     session_type: str,
     metrics: Dict[str, Any],
-    critical_issues: List[str],
-    warnings: List[str],
-    session_log_excerpt: str
+    session_metrics: Dict[str, Any],
 ) -> str:
     """
-    Create context for Claude review.
+    Create optimized context for Claude review.
+
+    REFACTORED Dec 25, 2025: Now uses enhanced JSONL data instead of TXT log excerpt.
+    This provides 8x token reduction with better signal-to-noise ratio.
 
     Provides all relevant information about the session for analysis.
     """
-    context = f"""# Review Context for Session {session_number}
+    enhanced_data = metrics.get('enhanced_data', {})
 
-## Project
-- **Location:** {project_path}
-- **Session:** {session_number}
-- **Type:** {session_type}
+    context = f"""# Review Context for Session
 
-## Session Metrics (Pre-computed)
+## Session Metadata
+- Session: {session_number} ({session_type})
+- Model: {enhanced_data.get('model', 'unknown')}
+- Prompt file: {enhanced_data.get('prompt_file', 'unknown')} ({enhanced_data.get('prompt_version', 'unknown')})
+- Duration: {session_metrics.get('duration_seconds', 0):.0f}s
 
-```json
-{json.dumps(metrics, indent=2)}
-```
-
-## Quick Quality Check Results
-
-**Overall Rating:** {get_quality_rating(metrics)}/10
-
-### Critical Issues
+## Session Metrics (from database)
 """
+    # Format session metrics as bullet list for better readability
+    for key, value in session_metrics.items():
+        # Skip model since we already included it above
+        if key == 'model':
+            continue
 
-    if critical_issues:
-        for issue in critical_issues:
-            context += f"\n{issue}"
-    else:
-        context += "\n✅ No critical issues detected"
+        # Format the key to be more readable (e.g., tool_calls_count -> Tool Calls)
+        readable_key = key.replace('_', ' ').title()
 
-    context += "\n\n### Warnings\n"
+        # Format values appropriately
+        if isinstance(value, float):
+            if key == 'error_rate':
+                formatted_value = f"{value:.1%}"
+            else:
+                formatted_value = f"{value:.2f}"
+        elif isinstance(value, int):
+            formatted_value = f"{value:,}"
+        else:
+            formatted_value = str(value)
 
-    if warnings:
-        for warning in warnings:
-            context += f"\n{warning}"
-    else:
-        context += "\n✅ No warnings"
+        context += f"\n- **{readable_key}:** {formatted_value}"
 
-    context += f"""
-
-## Key Findings (Preliminary)
-
-### Browser Verification
-- **Playwright calls:** {metrics.get('playwright_count', 0)}
-- **Screenshots:** {metrics.get('playwright_screenshot_count', 0)}
-- **Navigations:** {metrics.get('playwright_navigate_count', 0)}
-
-### Tool Usage
-- **Total tools used:** {metrics.get('total_tool_uses', 0)}
-- **Errors:** {metrics.get('error_count', 0)} ({metrics.get('error_rate', 0):.1%} rate)
-
-### Most Used Tools (Top 10)
-"""
-
+    context += f"\n\n## Tool Usage (Top 20)\n"
     # Add top tools
     sorted_tools = sorted(
         metrics.get('tool_counts', {}).items(),
         key=lambda x: x[1],
         reverse=True
     )
-    for tool, count in sorted_tools[:10]:
+    for tool, count in sorted_tools[:20]:  # Top 20 instead of all
         context += f"\n- {tool}: {count}"
 
-    context += f"""
+    context += f"\n\n## Error Analysis (ENHANCED)\n"
+    context += f"**Total errors: {session_metrics.get('errors_count', 0)} ({session_metrics.get('error_rate', 0):.1%} rate)**\n"
 
-## Session Log Excerpt (first 5000 chars)
+    # Format detailed error information
+    errors = enhanced_data.get('errors', [])
+    if errors:
+        for i, err in enumerate(errors[:10], 1):  # Limit to first 10 errors
+            repeated = " (REPEATED)" if err.get('is_repeated') else ""
+            context += f"\n### Error {i}{repeated} ({err.get('tool', 'unknown')})"
+            context += f"\n- Time: {err.get('timestamp', 'unknown')}"
+            context += f"\n- Task: {err.get('task', 'none')}"
+            context += f"\n- Message: {err.get('message', '')[:200]}..."
+    else:
+        context += "\n- No errors detected"
 
-```
-{session_log_excerpt}
-```
-"""
+    # Browser Verification Patterns
+    context += f"\n\n## Browser Verification Patterns\n"
+    context += f"- Total Playwright calls: {session_metrics.get('browser_verifications', 0)}\n"
+    context += f"- Screenshots taken: {enhanced_data.get('screenshot_count', 0)}\n"
+    context += f"- Screenshot timing:\n"
+    context += f"  - Before task completion: {enhanced_data.get('screenshots_before_completion', 0)} ({enhanced_data.get('screenshots_before_pct', 0):.0%})\n"
+    context += f"  - After task completion: {enhanced_data.get('screenshots_after_completion', 0)} ({enhanced_data.get('screenshots_after_pct', 0):.0%})\n"
+    context += f"- Console checks: {enhanced_data.get('console_check_count', 0)}\n"
+    context += f"- Navigate → Screenshot pattern: {enhanced_data.get('has_good_nav_pattern', 'unknown')}\n"
+
+    # Task Completion Timeline
+    context += f"\n\n## Task Completion Timeline\n"
+    task_timeline = enhanced_data.get('task_timeline', {})
+    if task_timeline:
+        for task_id, data in sorted(task_timeline.items())[:10]:  # Limit to first 10 tasks
+            start = data.get('start_time', '')
+            end = data.get('completion_time')
+            duration = _format_duration(start, end) if end else 'Not completed'
+
+            browser_count = len(data.get('browser_verifications', []))
+            test_count = len(data.get('tests_marked', []))
+
+            # Check if browser verification happened before completion
+            verified_before = False
+            if data.get('browser_verifications') and end:
+                last_verif = data['browser_verifications'][-1]['time']
+                verified_before = last_verif < end
+
+            context += f"\n- **Task {task_id}**: {duration}"
+            context += f"\n  - Browser verifications: {browser_count}"
+            context += f"\n  - Tests marked: {test_count}"
+            context += f"\n  - Verified before completion: {'YES ✅' if verified_before else 'NO ❌'}"
+    else:
+        context += "\n- No tasks completed this session"
+
+    # Prompt Adherence Indicators
+    context += f"\n\n## Prompt Adherence Indicators\n"
+    adherence_issues = enhanced_data.get('adherence_checks', [])
+    if adherence_issues:
+        context += "⚠️ **Violations detected:**\n"
+        for issue in adherence_issues[:10]:  # Limit to first 10
+            context += f"\n- [{issue.get('timestamp', 'unknown')}] {issue.get('issue', '')}"
+    else:
+        context += "✅ No prompt violations detected"
+
+    # Session Event Timeline (replaces TXT log excerpt)
+    context += f"\n\n## Session Event Timeline\n"
+    key_events = enhanced_data.get('key_events', [])
+    if key_events:
+        for event in key_events:
+            emoji = {
+                'session_start': '🚀',
+                'task_start': '▶️',
+                'task_complete': '✅',
+                'error': '❌',
+                'git_commit': '💾'
+            }.get(event.get('type'), '•')
+
+            time_str = event.get('time', '')
+            time_only = time_str.split('T')[1][:8] if 'T' in time_str else time_str
+            context += f"\n- {emoji} {time_only}: {event.get('desc', '')}"
+    else:
+        context += "\n- No significant events recorded"
 
     return context
 
@@ -469,6 +830,40 @@ def _parse_recommendations(review_text: str) -> List[str]:
             recommendations.append(current_recommendation)
 
     return recommendations
+
+
+def _extract_executive_summary(review_text: str) -> Dict[str, Any]:
+    """
+    Extract the Executive Summary section from review text.
+
+    Returns structured summary data for the review_summary JSONB field:
+    {
+        'rating': int,
+        'one_line': str,
+        'summary': str
+    }
+    """
+    import re
+
+    # Find the Executive Summary section
+    summary_match = re.search(
+        r'## Executive Summary\s*\n\*\*Session Rating: (\d+)/10\*\* - (.+?)\n\n(.+?)(?=\n##|\Z)',
+        review_text,
+        re.DOTALL
+    )
+
+    if summary_match:
+        rating = int(summary_match.group(1))
+        one_line = summary_match.group(2).strip()
+        summary_text = summary_match.group(3).strip()
+
+        return {
+            'rating': rating,
+            'one_line': one_line,
+            'summary': summary_text
+        }
+
+    return {}
 
 
 def _extract_rating_from_review(review_text: str) -> Optional[int]:
@@ -547,10 +942,10 @@ async def should_trigger_deep_review(
             last_deep_review = await conn.fetchrow(
                 """
                 SELECT s.session_number
-                FROM session_quality_checks q
-                JOIN sessions s ON q.session_id = s.id
-                WHERE s.project_id = $1 AND q.check_type = 'deep'
-                ORDER BY q.created_at DESC
+                FROM session_deep_reviews dr
+                JOIN sessions s ON dr.session_id = s.id
+                WHERE s.project_id = $1
+                ORDER BY dr.created_at DESC
                 LIMIT 1
                 """,
                 project_id

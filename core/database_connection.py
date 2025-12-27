@@ -35,6 +35,10 @@ load_dotenv(dotenv_path=_agent_env_file)
 
 logger = logging.getLogger(__name__)
 
+# Global database instance (singleton pattern)
+_db_instance: Optional['TaskDatabase'] = None
+_db_lock = None  # Will be set to asyncio.Lock() when needed
+
 
 def get_database_url() -> str:
     """
@@ -94,31 +98,66 @@ def create_database(connection_string: Optional[str] = None):
 
 async def get_db(connection_string: Optional[str] = None):
     """
-    Get and connect to PostgreSQL database (convenience function).
+    Get and connect to PostgreSQL database (singleton pattern).
 
     This is the recommended way to get a database instance in async contexts.
+    Uses a global singleton to avoid creating multiple connection pools.
 
     Args:
         connection_string: Optional connection string (uses env if not provided)
 
     Returns:
-        Connected TaskDatabase instance
+        Connected TaskDatabase instance (reuses existing pool if available)
 
     Example:
         db = await get_db()
         progress = await db.get_progress(project_id)
-        await db.disconnect()
+        # Note: Do NOT call disconnect() - pool is shared
     """
-    db = create_database(connection_string)
-    await db.connect()
-    return db
+    global _db_instance, _db_lock
+
+    # Initialize lock on first use
+    if _db_lock is None:
+        import asyncio
+        _db_lock = asyncio.Lock()
+
+    # Get or create singleton instance
+    async with _db_lock:
+        if _db_instance is None or _db_instance.pool is None:
+            logger.info("Creating new global database connection pool")
+            _db_instance = create_database(connection_string)
+            await _db_instance.connect()
+
+        return _db_instance
+
+
+async def close_db():
+    """
+    Close the global database connection pool.
+
+    This should be called on application shutdown to cleanly close
+    the connection pool.
+
+    Example:
+        # On FastAPI shutdown
+        @app.on_event("shutdown")
+        async def shutdown():
+            await close_db()
+    """
+    global _db_instance
+
+    if _db_instance and _db_instance.pool:
+        logger.info("Closing global database connection pool")
+        await _db_instance.disconnect()
+        _db_instance = None
 
 
 class DatabaseManager:
     """
     Context manager for PostgreSQL database connections.
 
-    Handles connection lifecycle automatically with async context manager.
+    Uses a shared global connection pool for efficiency.
+    The pool is NOT closed when exiting the context (it's reused).
 
     Example:
         async with DatabaseManager() as db:
@@ -137,14 +176,14 @@ class DatabaseManager:
         self.db = None
 
     async def __aenter__(self):
-        """Connect to database when entering context."""
+        """Get database instance (reuses global pool)."""
         self.db = await get_db(self.connection_string)
         return self.db
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Disconnect from database when exiting context."""
-        if self.db:
-            await self.db.disconnect()
+        """Exit context (pool remains open for reuse)."""
+        # Do NOT disconnect - the pool is shared globally
+        pass
 
 
 def is_postgresql_configured() -> bool:

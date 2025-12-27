@@ -118,7 +118,7 @@ export function SessionQualityBadge({
  */
 export function QualityLegend() {
   return (
-    <div className="flex items-center gap-4 text-xs text-gray-400">
+    <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
       <div className="flex items-center gap-1">
         <div className="w-3 h-3 rounded-sm bg-green-900/30 border border-green-600/50"></div>
         <span>9-10 (Excellent)</span>

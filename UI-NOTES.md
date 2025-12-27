@@ -65,7 +65,7 @@ The codebase is well-structured for UI improvements:
 - Basic visual design (default Tailwind styling)
 - No custom animations or transitions
 - Limited mobile optimization
-- Alert boxes instead of toast notifications (see TODO.md)
+- Dark/light mode partially implemented (some panels in light mode need updates)
 
 ## Philosophy
 

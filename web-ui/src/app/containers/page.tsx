@@ -167,7 +167,7 @@ export default function ContainersPage() {
       <div className="min-h-screen bg-gray-950 text-gray-100 p-8">
         <div className="max-w-7xl mx-auto">
           <h1 className="text-3xl font-bold mb-8">Docker Containers</h1>
-          <div className="text-gray-400">Loading containers...</div>
+          <div className="text-gray-600 dark:text-gray-400">Loading containers...</div>
         </div>
       </div>
     );
@@ -179,7 +179,7 @@ export default function ContainersPage() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Docker Containers</h1>
-          <p className="text-gray-400">
+          <p className="text-gray-600 dark:text-gray-400">
             Manage Docker containers for your YokeFlow projects
           </p>
         </div>
@@ -196,7 +196,7 @@ export default function ContainersPage() {
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <div className="text-sm text-gray-400 mb-1">Stopped</div>
-            <div className="text-2xl font-bold text-gray-400">{stoppedCount}</div>
+            <div className="text-2xl font-bold text-gray-600 dark:text-gray-400">{stoppedCount}</div>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
             <div className="text-sm text-gray-400 mb-1">Actions</div>
@@ -218,7 +218,7 @@ export default function ContainersPage() {
                 ? `You have ${projectContainers.length} project(s), but none are using Docker sandbox.`
                 : 'No projects found in the database.'}
             </div>
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-700 dark:text-gray-500">
               Create a project with Docker sandbox to see containers here.
             </div>
             {projectContainers.length > 0 && (
@@ -250,12 +250,12 @@ export default function ContainersPage() {
                   <tr key={project.id} className="border-b border-gray-800 hover:bg-gray-800/30">
                     <td className="p-4">
                       <div className="font-medium">{project.name}</div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-gray-700 dark:text-gray-500">
                         {project.completed_at ? '✓ Complete' : 'In Progress'}
                       </div>
                     </td>
                     <td className="p-4">
-                      <div className="font-mono text-sm text-gray-400">
+                      <div className="font-mono text-sm text-gray-600 dark:text-gray-400">
                         {container?.container_name || `yokeflow-${project.name}`}
                       </div>
                     </td>
@@ -265,23 +265,23 @@ export default function ContainersPage() {
                       ) : container?.container_exists ? (
                         getStatusBadge(container.status)
                       ) : (
-                        <span className="text-xs text-gray-500">No container</span>
+                        <span className="text-xs text-gray-700 dark:text-gray-500">No container</span>
                       )}
                     </td>
                     <td className="p-4">
-                      <div className="font-mono text-xs text-gray-500">
+                      <div className="font-mono text-xs text-gray-700 dark:text-gray-500">
                         {container?.container_id || '-'}
                       </div>
                     </td>
                     <td className="p-4">
                       {container?.ports && Object.keys(container.ports).length > 0 ? (
-                        <div className="text-xs text-gray-400">
+                        <div className="text-xs text-gray-600 dark:text-gray-400">
                           {Object.entries(container.ports).map(([port, bindings]) => (
                             <div key={port}>{port}</div>
                           ))}
                         </div>
                       ) : (
-                        <span className="text-xs text-gray-500">-</span>
+                        <span className="text-xs text-gray-700 dark:text-gray-500">-</span>
                       )}
                     </td>
                     <td className="p-4">
@@ -314,7 +314,7 @@ export default function ContainersPage() {
                             </button>
                           </>
                         ) : (
-                          <span className="text-xs text-gray-500">No actions available</span>
+                          <span className="text-xs text-gray-700 dark:text-gray-500">No actions available</span>
                         )}
                       </div>
                     </td>

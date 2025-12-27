@@ -86,7 +86,6 @@ yokeflow/
 ├── review/                  # Review system modules
 │   ├── review_client.py     # Automated deep reviews (Phase 2)
 │   ├── review_metrics.py    # Quality metrics (Phase 1)
-│   ├── review_agent.py      # Manual review tool
 │   └── prompt_improvement_analyzer.py  # Prompt optimization (Phase 4)
 ├── api/                     # FastAPI REST API
 ├── web-ui/                  # Next.js Web UI
@@ -144,25 +143,29 @@ python tests/test_orchestrator.py        # Orchestrator
 
 **MCP**: `mcp-task-manager/src/index.ts`
 
-**Schema**: `schema/postgresql/001_initial_schema.sql`
+**Schema**: `schema/postgresql/schema.sql`
 
-**Docs**: `docs/developer-guide.md`, `docs/review-system.md`, `README.md`, `TODO.md` (pre-release), `TODO-FUTURE.md` (post-release)
-
-**Transition Docs**: `YOKEFLOW.md` (transition checklist), `TODO.md` (pre-release tasks), `TODO-FUTURE.md` (post-release enhancements)
+**Docs**: `docs/developer-guide.md`, `docs/review-system.md`, `README.md`, `TODO-FUTURE.md` (post-release enhancements)
 
 **Review System**:
 - Phase 1: `review/review_metrics.py` - Quick checks (zero-cost) ✅ Production Ready
 - Phase 2: `review/review_client.py` - Deep reviews (AI-powered) ✅ Production Ready
 - Phase 3: `web-ui/src/components/QualityDashboard.tsx` - UI dashboard ✅ Production Ready
-- Phase 4: Prompt Improvement System - ⚠️ **ARCHIVED** (see `.archived-features/prompt-improvements/`) - Will be reimplemented post-release
+- Phase 4: `review/prompt_improvement_analyzer.py` - Prompt improvements ✅ **RESTORED** (feature branch)
 
 ## Recent Changes
 
-**December 23, 2025**:
-- ✅ **CLI Removed**: Removed `cli/yokeflow.py` in favor of Web UI (API-first architecture)
-- ✅ **Orchestrator Simplified**: Removed CLI compatibility functions from core/orchestrator.py
-- ✅ **Scripts Consolidated**: Moved utility tools from `cli/` to `scripts/` directory
-- ✅ **Utility Tools Retained**: Kept debugging/development tools (task_status, reset_project, cleanup_*)
+**December 27, 2025 - v1.1.0 Release**:
+- ✅ **Version 1.1.0**: Database schema improvements, migration scripts removed
+- ✅ **Fresh Install Required**: Schema changes require clean database installation
+- ✅ **Migration Scripts Removed**: All migration-related scripts and directories cleaned up
+- ⚠️ **Breaking Change**: Existing v1.0.0 databases cannot be migrated - fresh install required
+
+**December 24, 2025**:
+- ✅ **Prompt Improvements Restored**: Phase 4 of Review System re-enabled in feature branch
+- ✅ **Backend Components**: Restored `prompt_improvement_analyzer.py` and API routes
+- ✅ **Web UI Pages**: Restored `/prompt-improvements` dashboard and detail views
+- ✅ **Integration Complete**: Connected with existing Review System (Phases 1-3)
 
 **December 2025**:
 - ✅ Review system Phases 1-3 complete (quick checks, deep reviews, UI dashboard)
@@ -190,7 +193,7 @@ python tests/test_orchestrator.py        # Orchestrator
 
 ## Release Status
 
-**Current State**: Production Ready - v1.0.0
+**Current State**: Production Ready - v1.1.0
 
 **Release Highlights**:
 - ✅ **Complete Platform**: All 7 phases of development complete

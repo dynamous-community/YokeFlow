@@ -2,126 +2,48 @@
 
 This document tracks enhancements and features planned for **after** the initial YokeFlow release.
 
-**Last Updated:** December 23, 2025
+**Last Updated:** December 27, 2025 (v1.1.0)
+
+**Note:** This document has been simplified for v1.1.0 to focus on future enhancements. Completed features are marked with ✅ but descriptions are now concise. For full implementation details, see the git history or [docs/review-system.md](docs/review-system.md).
 
 ---
 
 ## 🎯 POST-RELEASE PRIORITIES
 
-### 1. Prompt Improvement System
-**Status:** Under development in a non-published branch, based on refactoring an earlier experimental version.
+### 1. Prompt Improvement System (Phase 4 of Review System)
+**Status:** ✅ **COMPLETE** - Production ready (December 2025)
 
-**Why It Matters:**
-- Automated prompt optimization improves agent performance
-- Reduces need for manual prompt engineering
-- Provides data-driven insights into agent behavior
+**Implemented Features:**
+- Multi-project and single-project analysis
+- Theme-based clustering (8 categories)
+- Confidence scoring and prioritization
+- Web UI dashboard with trigger controls
+- Evidence tracking with session links
 
-**Priority:** Will be merged after successful testing has been completed. 
+**Documentation:** See [docs/review-system.md](docs/review-system.md#phase-4-prompt-improvement-analyzer--new)
+
+**Future Enhancements:**
+- **Project-Type-Specific Prompts**: Tag projects by type (UI-focused, Mobile App, AI Agent, etc.) and generate scoped improvements
+- ML-based semantic similarity clustering
+- A/B testing for prompt changes
+- Prompt version tracking and comparison
+- **Automatic Proposal Application**: One-click apply with git integration, diff preview, and rollback capability
+- **Impact Tracking**: Measure quality improvements after implementing changes (schema fields already exist)
+
+**Priority:** Core feature complete - enhancements are LOW priority 
 
 ### 2. Multiple Spec Files Upload - Advanced Features
-**Status:** ✅ Core feature implemented in v1.0 - Advanced features deferred
+**Status:** ✅ Core feature complete - Advanced features deferred
 
-**Implemented in v1.0:**
-- ✅ Multiple file upload via Web UI
-- ✅ Auto-detect primary file (heuristic-based: main.md, spec.md, largest .md/.txt)
-- ✅ Automatic `spec/` directory creation
-- ✅ Smart `app_spec.txt` generation with file listings
-- ✅ Lazy-loading instructions in prompts
-- ✅ Backward compatible with single file
+**Advanced Features:**
+1. **Database Metadata Storage**: Track spec file metadata in projects table (JSONB column)
+2. **LLM-Based Primary File Detection**: Use Claude Haiku for content-based detection (~$0.001/project)
+3. **Advanced Manifest Parsing**: YAML/TOML frontmatter with conditional includes
+4. **Spec File Versioning**: Track changes across sessions with diff view
+5. **Template Bundles**: Pre-packaged spec sets for common project types
 
-**Advanced Features for Post-v1.0:**
-
-**1. Database Metadata Storage (1-2 hours)**
-- Add `spec_files JSONB` column to projects table
-- Track which file is primary, file sizes, upload timestamps
-- Enable UI to show spec file list on project detail page
-- Query: "Which projects use multi-file specs?"
-
-```sql
-ALTER TABLE projects ADD COLUMN spec_files JSONB DEFAULT '[]';
-
--- Example data:
-[
-  {"filename": "main.md", "size": 4096, "is_primary": true, "uploaded_at": "..."},
-  {"filename": "api-design.md", "size": 2048, "is_primary": false, "uploaded_at": "..."}
-]
-```
-
-**2. LLM-Based Primary File Detection (2-3 hours)**
-- Use Claude Haiku to analyze first 500 chars of each file
-- Detect primary spec based on content analysis, not just filename
-- More accurate than heuristics for edge cases
-- Fallback to heuristic if LLM call fails
-
-```python
-async def detect_primary_with_llm(spec_files: List[Path]) -> Path:
-    """Use Claude Haiku to analyze which file is the main specification."""
-
-    # Read first 500 chars of each file
-    file_previews = {
-        f.name: f.read_text()[:500]
-        for f in spec_files
-        if f.suffix in ['.md', '.txt']
-    }
-
-    # Ask Claude Haiku (cheap, fast)
-    prompt = f"""Which file is the main project specification?
-
-Files:
-{json.dumps(file_previews, indent=2)}
-
-Return ONLY the filename of the primary specification file."""
-
-    response = await call_claude_haiku(prompt)
-    return Path(response.strip())
-```
-
-**Cost:** ~$0.001 per project creation (negligible)
-
-**3. Advanced Manifest Parsing (3-4 hours)**
-- Parse YAML/TOML frontmatter in spec files
-- Structured metadata: dependencies, file relationships, read order
-- Auto-generate smarter `app_spec.txt` based on manifest
-- Support for conditional includes (e.g., "read if building frontend")
-
-```markdown
----
-type: primary_specification
-title: My SaaS Application
-references:
-  api_design:
-    file: api-design.md
-    read_when: implementing_backend
-  database:
-    file: database-schema.sql
-    read_when: setting_up_database
-  wireframes:
-    file: wireframes/
-    read_when: building_frontend
----
-
-# My SaaS Application
-
-Main content here...
-```
-
-**4. Spec File Versioning (4-6 hours)**
-- Track changes to spec files across sessions
-- Show diff when spec updated mid-project
-- "What changed since initialization?" view
-- Git-like history for spec evolution
-
-**5. Template Bundles (6-8 hours)**
-- Pre-packaged spec file sets for common project types
-- "SaaS starter", "E-commerce", "API service", etc.
-- One-click import of example specs
-- Community-contributed templates
-
----
-
-**Priority:** MEDIUM (implement based on user feedback after v1.0)
-
-**Estimated Total Effort for All Advanced Features:** 16-23 hours
+**Priority:** MEDIUM (implement based on user feedback)
+**Estimated Effort:** 16-23 hours
 
 ---
 
@@ -456,64 +378,30 @@ templates/
 
 **Recommendation:** Build as standalone tool after YokeFlow v1.0 release, once we have data on successful spec patterns.
 
-### 4. Enhanced Session Logs Viewer
-**Status:** Basic viewer complete - Could add polish
+### 4. UI Enhancements
 
-**Current Features (Working):**
-- ✅ View TXT and JSONL logs
-- ✅ Download capability
-- ✅ Human/Events/Errors tab filtering
+**Session Logs Viewer** (Status: ✅ Complete - Polish optional)
+- Current: TXT/JSONL viewing, download, tab filtering
+- Future: Syntax highlighting, search/filter, side-by-side view, export to PDF/HTML
 
-**Potential Enhancements:**
-- Syntax highlighting for JSONL tool calls
-- Search/filter within logs
-- Side-by-side TXT + JSONL view
-- Keyboard shortcuts
-- Export to other formats (PDF, HTML)
+**Screenshots Gallery** (Status: ✅ Complete - Enhancements on wishlist)
+- Current: Chronological gallery with lightbox
+- Future: Filter/search, bulk download, side-by-side comparison, annotations, timeline view
 
-**Priority:** LOW (current viewer meets needs)
+**History Tab Metrics** (Status: ✅ Core complete - Advanced analytics deferred)
+- Current: Token breakdown, cost, tool usage, model info
+- Future: Performance metrics, visual timeline, session comparison, trend analysis
 
-### 4. Screenshots Gallery Enhancements
-**Status:** ✅ Enhanced gallery with smart sorting - Additional polish on wishlist
+**Priority:** LOW-MEDIUM (current implementations meet needs)
 
+### 5. Brownfield/Non-UI Codebase Support
 
-**Potential Enhancements:**
-- Filter/search screenshots by task ID or filename
-- Bulk download (download all screenshots for a task as ZIP)
-- Side-by-side comparison view for before/after screenshots
-- Timeline view showing screenshots chronologically across all tasks
-- User annotations - allow adding notes/comments to screenshots
-- Screenshot diffing - highlight visual differences between screenshots
-- Integration with task detail modal - show related screenshots when viewing a task
-- Video recording support (if agents start using video capture)
-- Screenshot metadata tagging (success/failure/error states)
+**Challenges:**
+- Current focus on greenfield projects with browser testing
+- Need GitHub import capability
+- Adapt testing strategy for non-UI code
 
-**Priority:** LOW (basic gallery meets current needs)
-
-### 5. Advanced History Tab Metrics
-**Status:** Core metrics complete - Advanced analytics on wishlist
-
-**Completed:**
-- ✅ Token usage breakdown (input, output, cache)
-- ✅ Cost calculation
-- ✅ Tool usage and error counts
-- ✅ Model information per session
-
-**Future Possibilities:**
-- Performance metrics (avg tool execution time)
-- Visual timeline/activity graph
-- Session comparison tool
-- Trend analysis across projects
-- Cost optimization suggestions
-- Resource usage heatmaps
-
-**Priority:** MEDIUM (nice-to-have for production deployment)
-
-### 6. Modify to work on Brownfield or non-UI Codebases
-
-**Issues to Consider**
-- Current code focuses heavily on Browser testing
-- How to import exisiting codebase - GitHub support?
+**Priority:** MEDIUM-HIGH (expand use cases)
 
 ---
 
@@ -562,44 +450,21 @@ templates/
 
 **Priority:** MEDIUM
 
-### Docker Container Cleanup Automation ✅ CORE FEATURES COMPLETE
-**Status:** Core implementation complete (Dec 24, 2025) - Advanced features deferred
+### Docker Container Management
+**Status:** ✅ Core features complete - Advanced monitoring deferred
 
-**Completed Features:**
-- ✅ Container reuse between sessions (implemented)
-- ✅ Manual cleanup utility (`scripts/cleanup_containers.py`)
-- ✅ **Auto-cleanup on project deletion** (implemented Dec 23, 2025)
-  - Containers automatically removed when project deleted via Web UI
-  - Enhanced error handling and logging in `core/orchestrator.py` and `core/sandbox_manager.py`
-  - Best-effort deletion (doesn't block project deletion if container cleanup fails)
-- ✅ **Auto-stop on project completion** (implemented Dec 24, 2025)
-  - Containers automatically stopped when all tasks complete
-  - Frees up ports for other projects
-  - Containers preserved (not deleted) so they can be restarted
-- ✅ **Dedicated /containers page** (implemented Dec 24, 2025)
-  - Centralized UI for managing all Docker containers
-  - Real-time status display (running/stopped/exited)
-  - Manual start/stop/delete controls
-  - Port mappings display
-  - Statistics dashboard
-  - Docker Desktop alternative when Desktop isn't available
-- ✅ **API endpoints** for container management (GET status, POST start/stop, DELETE)
+**Implemented:**
+- Container reuse, auto-cleanup on deletion, auto-stop on completion
+- Dedicated /containers page with start/stop/delete controls
+- API endpoints for container management
 
-**Remaining Advanced Features (Future):**
-- Container retention policies (30 min - 1 hour)
-  - Option to keep stopped containers for X days
-  - User preference: auto-delete vs. manual
-- Periodic cleanup task (1 hour)
-  - Scheduled job to clean up old stopped containers
-  - Configurable retention period
-- Container health monitoring
-  - Track CPU/memory usage
-  - Alert on resource issues
+**Future:**
+- Retention policies (keep stopped containers for X days)
+- Periodic cleanup tasks
+- Container health monitoring (CPU/memory tracking)
 - Disk space alerts
-  - Warn when Docker disk usage high
-  - Suggest cleanup when needed
 
-**Priority:** MEDIUM for advanced features (core features complete and solve the main port conflict problem)
+**Priority:** MEDIUM (core features solve main issues)
 
 ---
 

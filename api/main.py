@@ -71,8 +71,7 @@ from core.orchestrator import AgentOrchestrator, SessionInfo, SessionStatus, Ses
 from core.database_connection import DatabaseManager, is_postgresql_configured, get_db
 from core.config import Config
 from core.reset import reset_project
-# DISABLED: Prompt Improvements feature - will be reimplemented in future feature branch
-# from api.prompt_improvements_routes import router as prompt_improvements_router
+from api.prompt_improvements_routes import router as prompt_improvements_router
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +99,8 @@ class ProjectResponse(BaseModel):
     status: str = "active"
     is_initialized: bool = False  # NEW: Whether initialization (Session 1) is complete
     completed_at: Optional[str] = None  # Timestamp when all tasks completed
+    total_cost_usd: float = 0.0  # Total cost across all sessions
+    total_time_seconds: int = 0  # Total time in seconds across all sessions
     progress: Dict[str, Any]
     next_task: Optional[Dict[str, Any]] = None
     active_sessions: List[Dict[str, Any]] = []
@@ -148,6 +149,16 @@ async def orchestrator_event_callback(project_id: UUID, event_type: str, data: D
 
 orchestrator = AgentOrchestrator(verbose=False, event_callback=orchestrator_event_callback)
 
+# Configure logging for the application
+# This ensures logger.info() calls from all modules are visible
+# Read log level from .env file (defaults to ERROR if not set)
+log_level_str = os.getenv('LOG_LEVEL', 'ERROR').upper()
+log_level = getattr(logging, log_level_str, logging.ERROR)
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -211,8 +222,7 @@ app.add_middleware(
 )
 
 # Include routers
-# DISABLED: Prompt Improvements feature - will be reimplemented in future feature branch
-# app.include_router(prompt_improvements_router)
+app.include_router(prompt_improvements_router)
 
 # Load configuration
 config = Config.load_default()
@@ -305,6 +315,10 @@ async def shutdown_event():
     for session_id, task in running_sessions.items():
         if not task.done():
             task.cancel()
+
+    # Close database connection pool
+    from core.database_connection import close_db
+    await close_db()
 
     # Close WebSocket connections
     for connections in active_connections.values():
@@ -1647,22 +1661,19 @@ async def start_session(project_id: str, session_config: SessionStart, backgroun
 
         # Get the actual session info that will be created
         db = await get_db()
-        try:
-            next_session_num = await db.get_next_session_number(project_uuid)
-            # Return info about the session that will be created
-            # WebSocket will provide real-time updates when session actually starts
-            return SessionResponse(
-                session_id="pending",  # Will be updated via WebSocket
-                project_id=str(project_uuid),
-                session_number=next_session_num,
-                session_type="coding" if next_session_num > 0 else "initializer",
-                model=initializer_model if next_session_num == 0 else coding_model,
-                status="starting",
-                created_at=datetime.now().isoformat(),
-                metrics={}
-            )
-        finally:
-            await db.disconnect()
+        next_session_num = await db.get_next_session_number(project_uuid)
+        # Return info about the session that will be created
+        # WebSocket will provide real-time updates when session actually starts
+        return SessionResponse(
+            session_id="pending",  # Will be updated via WebSocket
+            project_id=str(project_uuid),
+            session_number=next_session_num,
+            session_type="coding" if next_session_num > 0 else "initializer",
+            model=initializer_model if next_session_num == 0 else coding_model,
+            status="starting",
+            created_at=datetime.now().isoformat(),
+            metrics={}
+        )
 
     except Exception as e:
         logger.error(f"Failed to start session for project {project_id}: {e}")
@@ -2217,11 +2228,8 @@ async def get_project_quality(project_id: str):
     try:
         project_uuid = UUID(project_id)
         db = await get_db()
-        try:
-            summary = await db.get_project_quality_summary(project_uuid)
-            return summary
-        finally:
-            await db.disconnect()
+        summary = await db.get_project_quality_summary(project_uuid)
+        return summary
 
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid project ID format")
@@ -2240,15 +2248,12 @@ async def get_session_quality(project_id: str, session_id: str):
     try:
         session_uuid = UUID(session_id)
         db = await get_db()
-        try:
-            quality = await db.get_session_quality(session_uuid)
+        quality = await db.get_session_quality(session_uuid)
 
-            if not quality:
-                raise HTTPException(status_code=404, detail="Quality check not found for this session")
+        if not quality:
+            raise HTTPException(status_code=404, detail="Quality check not found for this session")
 
-            return quality
-        finally:
-            await db.disconnect()
+        return quality
 
     except HTTPException:
         # Re-raise HTTP exceptions (like 404) without wrapping
@@ -2271,11 +2276,8 @@ async def get_quality_issues(project_id: str, limit: int = 10):
     try:
         project_uuid = UUID(project_id)
         db = await get_db()
-        try:
-            issues = await db.get_sessions_with_quality_issues(project_uuid, limit)
-            return {"issues": issues, "count": len(issues)}
-        finally:
-            await db.disconnect()
+        issues = await db.get_sessions_with_quality_issues(project_uuid, limit)
+        return {"issues": issues, "count": len(issues)}
 
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid project ID format")
@@ -2295,16 +2297,303 @@ async def get_browser_verification_compliance(project_id: str):
     try:
         project_uuid = UUID(project_id)
         db = await get_db()
-        try:
-            compliance = await db.get_browser_verification_compliance(project_uuid)
-            return compliance
-        finally:
-            await db.disconnect()
+        compliance = await db.get_browser_verification_compliance(project_uuid)
+        return compliance
 
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid project ID format")
     except Exception as e:
         logger.error(f"Failed to get browser verification compliance for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/projects/{project_id}/deep-reviews")
+async def list_deep_reviews(project_id: str):
+    """
+    Get all deep reviews for a project.
+
+    Returns list of deep review results with session info and review_text.
+    """
+    try:
+        project_uuid = UUID(project_id)
+        db = await get_db()
+        reviews = await db.list_deep_reviews(project_uuid)
+        return {"reviews": reviews, "count": len(reviews)}
+
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid project ID format")
+    except Exception as e:
+        logger.error(f"Failed to get deep reviews for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/projects/{project_id}/review-stats")
+async def get_project_review_stats(project_id: str):
+    """
+    Get project review statistics including coverage.
+
+    Returns total sessions, sessions with reviews, and coverage percentage.
+    """
+    try:
+        project_uuid = UUID(project_id)
+        db = await get_db()
+        stats = await db.get_project_review_stats(project_uuid)
+        return stats
+
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid project ID format")
+    except Exception as e:
+        logger.error(f"Failed to get review stats for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/projects/{project_id}/sessions/{session_id}/review")
+async def trigger_deep_review(
+    project_id: str,
+    session_id: str,
+    background_tasks: BackgroundTasks,
+    model: Optional[str] = None
+):
+    """
+    Manually trigger a deep review for a specific session.
+
+    This allows testing the review system without waiting for automatic triggers.
+    The review runs in the background and results are stored in the database.
+
+    Args:
+        project_id: UUID of the project
+        session_id: UUID of the session to review
+        model: Optional Claude model to use (default: Sonnet 4.5)
+
+    Returns:
+        Confirmation that review was triggered
+    """
+    try:
+        from review.review_client import run_deep_review
+
+        project_uuid = UUID(project_id)
+        session_uuid = UUID(session_id)
+
+        # Get project and session info
+        db = await get_db()
+        # Verify session exists
+        async with db.acquire() as conn:
+            session = await conn.fetchrow(
+                """
+                SELECT s.*, p.name as project_name
+                FROM sessions s
+                JOIN projects p ON s.project_id = p.id
+                WHERE s.id = $1 AND s.project_id = $2
+                """,
+                session_uuid,
+                project_uuid
+            )
+
+            if not session:
+                raise HTTPException(status_code=404, detail="Session not found")
+
+            # Check if session is completed
+            if session['status'] != 'completed':
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Session must be completed to review (current status: {session['status']})"
+                )
+
+            project_name = session['project_name']
+            session_number = session['session_number']
+
+            # Check if session already has a review
+            existing_review = await conn.fetchrow(
+                "SELECT id, created_at, overall_rating FROM session_deep_reviews WHERE session_id = $1",
+                session_uuid
+            )
+            is_rereview = existing_review is not None
+
+        # Get project path
+        config = Config.load_default()
+        project_path = Path(config.project.default_generations_dir) / project_name
+
+        if not project_path.exists():
+            raise HTTPException(status_code=404, detail=f"Project directory not found: {project_path}")
+
+        # Use default model if not specified
+        if not model:
+            model = config.models.coding  # Use coding model (Sonnet) for reviews
+
+        # Run review in background
+        async def _run_review_task():
+            try:
+                logger.info(f"Starting manual deep review for session {session_uuid} (project: {project_name}, session {session_number})")
+                result = await run_deep_review(
+                    session_id=session_uuid,
+                    project_path=project_path,
+                    model=model
+                )
+                logger.info(f"Deep review completed: {result['check_id']} (rating: {result['overall_rating']}/10)")
+            except Exception as e:
+                logger.error(f"Deep review failed for session {session_uuid}: {e}", exc_info=True)
+
+        # Add to background tasks
+        background_tasks.add_task(_run_review_task)
+
+        message = "Deep review triggered successfully"
+        if is_rereview:
+            message = f"Re-review triggered (existing review will be updated)"
+
+        return {
+            "message": message,
+            "project_id": project_id,
+            "session_id": session_id,
+            "session_number": session_number,
+            "model": model,
+            "status": "running",
+            "is_rereview": is_rereview
+        }
+
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid UUID format")
+    except Exception as e:
+        logger.error(f"Failed to trigger deep review: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/projects/{project_id}/trigger-reviews")
+async def trigger_bulk_reviews(
+    project_id: str,
+    background_tasks: BackgroundTasks,
+    request: dict
+):
+    """
+    Trigger deep reviews for multiple sessions in a project.
+
+    Request body:
+    {
+        "mode": "all" | "unreviewed" | "last_n" | "range",
+        "last_n": 5,  // for "last_n" mode
+        "session_ids": ["uuid1", "uuid2"]  // for "range" mode
+    }
+    """
+    try:
+        from review.review_client import run_deep_review
+
+        project_uuid = UUID(project_id)
+        mode = request.get('mode', 'unreviewed')
+
+        db = await get_db()
+        # Get project info
+        async with db.acquire() as conn:
+            project = await conn.fetchrow(
+                "SELECT * FROM projects WHERE id = $1",
+                project_uuid
+            )
+            if not project:
+                raise HTTPException(status_code=404, detail="Project not found")
+
+            project_name = project['name']
+
+            # Build query based on mode
+            if mode == 'all':
+                query = """
+                    SELECT s.id, s.session_number
+                    FROM sessions s
+                    WHERE s.project_id = $1 AND s.status = 'completed' AND s.type = 'coding'
+                    ORDER BY s.session_number
+                """
+                params = [project_uuid]
+            elif mode == 'unreviewed':
+                query = """
+                    SELECT s.id, s.session_number
+                    FROM sessions s
+                    LEFT JOIN session_deep_reviews dr ON s.id = dr.session_id
+                    WHERE s.project_id = $1 AND s.status = 'completed' AND s.type = 'coding' AND dr.id IS NULL
+                    ORDER BY s.session_number
+                """
+                params = [project_uuid]
+            elif mode == 'last_n':
+                last_n = request.get('last_n', 5)
+                query = """
+                    SELECT s.id, s.session_number
+                    FROM sessions s
+                    LEFT JOIN session_deep_reviews dr ON s.id = dr.session_id
+                    WHERE s.project_id = $1 AND s.status = 'completed' AND s.type = 'coding' AND dr.id IS NULL
+                    ORDER BY s.session_number DESC
+                    LIMIT $2
+                """
+                params = [project_uuid, last_n]
+            elif mode == 'single':
+                session_number = request.get('session_number')
+                if session_number is None:
+                    raise HTTPException(status_code=400, detail="session_number required for single mode")
+                query = """
+                    SELECT s.id, s.session_number
+                    FROM sessions s
+                    WHERE s.project_id = $1 AND s.session_number = $2 AND s.status = 'completed' AND s.type = 'coding'
+                """
+                params = [project_uuid, session_number]
+            elif mode == 'range':
+                session_ids = request.get('session_ids', [])
+                if not session_ids:
+                    raise HTTPException(status_code=400, detail="session_ids required for range mode")
+                session_uuids = [UUID(sid) for sid in session_ids]
+                query = """
+                    SELECT s.id, s.session_number
+                    FROM sessions s
+                    WHERE s.project_id = $1 AND s.id = ANY($2::uuid[]) AND s.status = 'completed' AND s.type = 'coding'
+                    ORDER BY s.session_number
+                """
+                params = [project_uuid, session_uuids]
+            else:
+                raise HTTPException(status_code=400, detail=f"Invalid mode: {mode}")
+
+            sessions = await conn.fetch(query, *params)
+
+            if not sessions:
+                return {
+                    "message": "No eligible sessions found for review",
+                    "mode": mode,
+                    "sessions_triggered": 0
+                }
+
+        # Get project path
+        config = Config.load_default()
+        project_path = Path(config.project.default_generations_dir) / project_name
+
+        # Trigger reviews for each session
+        triggered_count = 0
+        for session in sessions:
+            session_uuid = session['id']
+            session_number = session['session_number']
+
+            async def _run_review_task(sid: UUID, snum: int):
+                """Background task to run the review."""
+                try:
+                    await run_deep_review(
+                        session_id=sid,
+                        project_path=project_path
+                    )
+                    logger.info(f"Completed deep review for session {snum}")
+                except Exception as e:
+                    logger.error(f"Failed to run deep review for session {snum}: {e}", exc_info=True)
+
+            background_tasks.add_task(_run_review_task, session_uuid, session_number)
+            triggered_count += 1
+
+        return {
+            "message": f"Triggered {triggered_count} deep review(s)",
+            "project_id": project_id,
+            "mode": mode,
+            "sessions_triggered": triggered_count,
+            "status": "running"
+        }
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid UUID format: {e}")
+    except Exception as e:
+        logger.error(f"Failed to trigger bulk reviews: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -733,9 +733,9 @@ echo $DATABASE_URL
 
 - [Main README](../README.md) - Platform overview
 - [CLAUDE.md](../CLAUDE.md) - Developer guide
-- [Phase 1 Summary](../PHASE_1_COMPLETE.md) - Backend refactor details
-- [Phase 2 Summary](../PHASE_2_COMPLETE.md) - Frontend integration details
+- [Developer Guide](../docs/developer-guide.md) - Technical deep-dive
 - [MCP Task Manager](../mcp-task-manager/README.md) - Task management server
+- [Web UI](../web-ui/README.md) - Next.js frontend
 
 ## License
 

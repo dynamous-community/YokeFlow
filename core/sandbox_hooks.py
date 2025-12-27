@@ -28,14 +28,14 @@ def set_active_sandbox(sandbox):
     """
     global _active_sandbox
     _active_sandbox = sandbox
-    logger.info(f"Active sandbox set: {type(sandbox).__name__}")
+    logger.debug(f"Active sandbox set: {type(sandbox).__name__}")
 
 
 def clear_active_sandbox():
     """Clear the active sandbox after session ends."""
     global _active_sandbox
     _active_sandbox = None
-    logger.info("Active sandbox cleared")
+    logger.debug("Active sandbox cleared")
 
 
 async def test_hook(input_data, tool_use_id=None, context=None):
@@ -43,9 +43,9 @@ async def test_hook(input_data, tool_use_id=None, context=None):
     Test hook to verify hooks are being called at all.
     This should log for EVERY tool call, not just Bash.
     """
-    logger.info("TEST_HOOK CALLED!")
-    logger.info(f"  Tool: {input_data.get('tool_name')}")
-    logger.info(f"  All tools should trigger this message")
+    logger.debug("TEST_HOOK CALLED!")
+    logger.debug(f"  Tool: {input_data.get('tool_name')}")
+    logger.debug(f"  All tools should trigger this message")
     return {}
 
 
@@ -66,37 +66,37 @@ async def sandbox_bash_hook(input_data, tool_use_id=None, context=None):
     Returns:
         Empty dict to allow execution, or dict with "override_result" to provide custom result
     """
-    logger.info("=" * 80)
-    logger.info("SANDBOX_BASH_HOOK CALLED!")
-    logger.info(f"  Tool name: {input_data.get('tool_name')}")
-    logger.info(f"  Tool use ID: {tool_use_id}")
-    logger.info(f"  Active sandbox: {_active_sandbox}")
-    logger.info(f"  Input data keys: {list(input_data.keys())}")
-    logger.info("=" * 80)
+    logger.debug("=" * 80)
+    logger.debug("SANDBOX_BASH_HOOK CALLED!")
+    logger.debug(f"  Tool name: {input_data.get('tool_name')}")
+    logger.debug(f"  Tool use ID: {tool_use_id}")
+    logger.debug(f"  Active sandbox: {_active_sandbox}")
+    logger.debug(f"  Input data keys: {list(input_data.keys())}")
+    logger.debug("=" * 80)
 
     if input_data.get("tool_name") != "Bash":
-        logger.info("  → Not a Bash tool, skipping")
+        logger.debug("  → Not a Bash tool, skipping")
         return {}
 
     # If no sandbox is active, allow normal execution
     if _active_sandbox is None:
-        logger.info("  → No active sandbox, allowing normal execution")
+        logger.debug("  → No active sandbox, allowing normal execution")
         return {}
 
     # If sandbox is LocalSandbox (no isolation), allow normal execution
     from core.sandbox_manager import LocalSandbox
     if isinstance(_active_sandbox, LocalSandbox):
-        logger.info("  → LocalSandbox active (no isolation), allowing normal execution")
+        logger.debug("  → LocalSandbox active (no isolation), allowing normal execution")
         return {}
 
     # Execute command in sandbox and override the result
     command = input_data.get("tool_input", {}).get("command", "")
     if not command:
-        logger.info("  → No command in tool_input, skipping")
+        logger.debug("  → No command in tool_input, skipping")
         return {}
 
-    logger.info(f"  → ROUTING TO SANDBOX: {type(_active_sandbox).__name__}")
-    logger.info(f"  → Command: {command[:200]}")
+    logger.debug(f"  → ROUTING TO SANDBOX: {type(_active_sandbox).__name__}")
+    logger.debug(f"  → Command: {command[:200]}")
 
     try:
         # Execute in sandbox (this is async but the hook expects sync return)
@@ -109,10 +109,10 @@ async def sandbox_bash_hook(input_data, tool_use_id=None, context=None):
         if result["stderr"]:
             output_text += f"\n{result['stderr']}"
 
-        logger.info(f"  → Sandbox execution SUCCESS")
-        logger.info(f"  → Return code: {result['returncode']}")
-        logger.info(f"  → Output length: {len(output_text)}")
-        logger.info(f"  → Output preview: {output_text[:200]}")
+        logger.debug(f"  → Sandbox execution SUCCESS")
+        logger.debug(f"  → Return code: {result['returncode']}")
+        logger.debug(f"  → Output length: {len(output_text)}")
+        logger.debug(f"  → Output preview: {output_text[:200]}")
 
         # Return empty dict to allow normal execution
         # BUT: We've already executed in sandbox, so this will cause double execution
@@ -124,8 +124,8 @@ async def sandbox_bash_hook(input_data, tool_use_id=None, context=None):
         # The SDK doesn't support this via hooks!
         # We need a different approach.
 
-        logger.info(f"  → Hook cannot override result - SDK limitation")
-        logger.info(f"  → Sandbox executed successfully but host will also execute")
+        logger.debug(f"  → Hook cannot override result - SDK limitation")
+        logger.debug(f"  → Sandbox executed successfully but host will also execute")
         return {}
 
     except Exception as e:

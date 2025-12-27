@@ -622,7 +622,7 @@ See session_001 logs for initialization details.
 
 async def async_main(args):
     """Async main logic."""
-    # Handle project directory path (match yokeflow.py behavior)
+    # Handle project directory path
     project_dir = Path(args.project_dir)
 
     # If the path is relative and doesn't start with "generations/",

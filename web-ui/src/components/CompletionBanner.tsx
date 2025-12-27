@@ -37,15 +37,15 @@ export function CompletionBanner({
           </p>
           <div className="flex gap-6 text-sm">
             <div className="flex items-center gap-2">
-              <span className="text-gray-400">Epics:</span>
+              <span className="text-gray-600 dark:text-gray-400">Epics:</span>
               <span className="font-semibold text-green-400">{totalEpics}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-gray-400">Tasks:</span>
+              <span className="text-gray-600 dark:text-gray-400">Tasks:</span>
               <span className="font-semibold text-blue-400">{totalTasks}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-gray-400">Tests:</span>
+              <span className="text-gray-600 dark:text-gray-400">Tests:</span>
               <span className="font-semibold text-purple-400">{totalTests}</span>
             </div>
           </div>

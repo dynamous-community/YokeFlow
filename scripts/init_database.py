@@ -137,11 +137,11 @@ async def verify_schema(connection_url: str) -> None:
         """)
 
         expected_tables = [
-            'epics', 'github_commits', 'project_preferences',
-            'projects', 'reviews', 'sessions', 'tasks', 'tests',
-            'session_quality_checks', 'prompt_improvement_analyses',
-            'prompt_proposals', 'prompt_versions'
+            'epics', 'projects', 'sessions', 'tasks', 'tests',
+            'session_quality_checks', 'session_deep_reviews',
+            'prompt_improvement_analyses', 'prompt_proposals'
         ]
+        # Note: reviews, github_commits, project_preferences removed in Migration 007 (never used)
 
         actual_tables = [row['tablename'] for row in tables]
 

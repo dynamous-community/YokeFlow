@@ -137,7 +137,7 @@ export default function CreateProjectPage() {
           <span className="text-gray-100">Create</span>
         </div>
         <h1 className="text-4xl font-bold mb-2">Create New Project</h1>
-        <p className="text-gray-400">
+        <p className="text-gray-600 dark:text-gray-400">
           Upload a specification file and configure your project settings
         </p>
       </div>
@@ -173,7 +173,7 @@ export default function CreateProjectPage() {
               {nameValidationError}
             </p>
           ) : (
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-gray-700 dark:text-gray-500">
               Use lowercase letters, numbers, and hyphens
             </p>
           )}
@@ -196,7 +196,7 @@ export default function CreateProjectPage() {
                   <div className="text-gray-300 font-medium">
                     {specFiles.length} file{specFiles.length > 1 ? 's' : ''} selected
                   </div>
-                  <div className="text-sm text-gray-500">
+                  <div className="text-sm text-gray-700 dark:text-gray-500">
                     {(specFiles.reduce((sum, f) => sum + f.size, 0) / 1024).toFixed(1)} KB total
                   </div>
                 </div>
@@ -219,9 +219,9 @@ export default function CreateProjectPage() {
                   >
                     Click to upload
                   </label>
-                  <span className="text-gray-500"> or drag and drop</span>
+                  <span className="text-gray-700 dark:text-gray-500"> or drag and drop</span>
                 </div>
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-gray-700 dark:text-gray-500">
                   Specs (.txt, .md) + Code examples (.py, .ts, .js, etc.)
                 </div>
               </div>
@@ -240,7 +240,7 @@ export default function CreateProjectPage() {
           {/* Selected Files List */}
           {specFiles.length > 0 && (
             <div className="mt-3 space-y-2">
-              <div className="text-sm font-medium text-gray-400">
+              <div className="text-sm font-medium text-gray-600 dark:text-gray-400">
                 Selected files:
               </div>
               {specFiles.map((file, index) => (
@@ -252,7 +252,7 @@ export default function CreateProjectPage() {
                     <span className="text-2xl">📄</span>
                     <div>
                       <div className="text-sm text-gray-300">{file.name}</div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-gray-700 dark:text-gray-500">
                         {(file.size / 1024).toFixed(1)} KB
                       </div>
                     </div>
@@ -298,7 +298,7 @@ export default function CreateProjectPage() {
             <option value="docker">Docker (isolated container, recommended)</option>
             <option value="local">Local (direct filesystem access, faster)</option>
           </select>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-gray-700 dark:text-gray-500">
             Docker provides isolation but may be slower. Local is faster but runs on the host system.
           </p>
         </div>
@@ -331,7 +331,7 @@ export default function CreateProjectPage() {
                   <option value="claude-opus-4-5-20251101">Claude Opus (better planning)</option>
                   <option value="claude-sonnet-4-5-20250929">Claude Sonnet (faster)</option>
                 </select>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-gray-700 dark:text-gray-500">
                   Model used for creating the project roadmap
                 </p>
               </div>
@@ -351,7 +351,7 @@ export default function CreateProjectPage() {
                   <option value="claude-sonnet-4-5-20250929">Claude Sonnet (recommended)</option>
                   <option value="claude-opus-4-5-20251101">Claude Opus (more capable)</option>
                 </select>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-gray-700 dark:text-gray-500">
                   Model used for implementation sessions
                 </p>
               </div>

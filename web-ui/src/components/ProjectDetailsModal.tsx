@@ -150,7 +150,7 @@ export function ProjectDetailsModal({
               }`}
             >
               Epics
-              <span className="ml-2 text-sm text-gray-500">({project.progress.total_epics})</span>
+              <span className="ml-2 text-sm text-gray-700 dark:text-gray-500">({project.progress.total_epics})</span>
             </button>
           </div>
 
@@ -163,7 +163,7 @@ export function ProjectDetailsModal({
                   className="w-full px-4 py-3 bg-gray-800 hover:bg-gray-700 text-gray-100 rounded-lg transition-colors text-left"
                 >
                   <div className="font-medium mb-1">Configure Project Settings</div>
-                  <div className="text-sm text-gray-400">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
                     Model selection, sandbox type, iteration limits
                   </div>
                 </button>
@@ -201,7 +201,7 @@ export function ProjectDetailsModal({
                   <div className="space-y-4">
                     <div className="mb-4">
                       <h3 className="text-lg font-semibold text-gray-100 mb-2">Project Roadmap</h3>
-                      <p className="text-sm text-gray-400">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
                         {project.progress.completed_epics}/{project.progress.total_epics} epics complete •
                         {' '}{project.progress.completed_tasks}/{project.progress.total_tasks} tasks complete •
                         {' '}{project.progress.passing_tests}/{project.progress.total_tests} tests passing

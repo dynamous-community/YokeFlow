@@ -194,21 +194,21 @@ export function ResetProjectDialog({
               <span className="text-red-400 mt-0.5">✗</span>
               <div>
                 <span className="text-gray-300">Database:</span>
-                <span className="text-gray-400"> All task/test completion status</span>
+                <span className="text-gray-600 dark:text-gray-400"> All task/test completion status</span>
               </div>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-red-400 mt-0.5">✗</span>
               <div>
                 <span className="text-gray-300">Git:</span>
-                <span className="text-gray-400"> Reset to commit after initialization</span>
+                <span className="text-gray-600 dark:text-gray-400"> Reset to commit after initialization</span>
               </div>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-red-400 mt-0.5">✗</span>
               <div>
                 <span className="text-gray-300">Logs:</span>
-                <span className="text-gray-400"> Coding session logs archived to </span>
+                <span className="text-gray-600 dark:text-gray-400"> Coding session logs archived to </span>
                 <code className="text-xs bg-gray-800 px-1 py-0.5 rounded">logs/old_attempts/TIMESTAMP/</code>
               </div>
             </div>
@@ -216,7 +216,7 @@ export function ResetProjectDialog({
               <span className="text-red-400 mt-0.5">✗</span>
               <div>
                 <span className="text-gray-300">Progress:</span>
-                <span className="text-gray-400"> Progress notes backed up and reset</span>
+                <span className="text-gray-600 dark:text-gray-400"> Progress notes backed up and reset</span>
               </div>
             </div>
           </div>
@@ -230,28 +230,28 @@ export function ResetProjectDialog({
               <span className="text-green-400 mt-0.5">✓</span>
               <div>
                 <span className="text-gray-300">Complete project roadmap</span>
-                <span className="text-gray-400"> (all epics, tasks, tests)</span>
+                <span className="text-gray-600 dark:text-gray-400"> (all epics, tasks, tests)</span>
               </div>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-green-400 mt-0.5">✓</span>
               <div>
                 <span className="text-gray-300">Initialization session</span>
-                <span className="text-gray-400"> (Session 0 commit and logs)</span>
+                <span className="text-gray-600 dark:text-gray-400"> (Session 0 commit and logs)</span>
               </div>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-green-400 mt-0.5">✓</span>
               <div>
                 <span className="text-gray-300">Project structure</span>
-                <span className="text-gray-400"> (init.sh and generated folders)</span>
+                <span className="text-gray-600 dark:text-gray-400"> (init.sh and generated folders)</span>
               </div>
             </div>
             <div className="flex items-start gap-2">
               <span className="text-green-400 mt-0.5">✓</span>
               <div>
                 <span className="text-gray-300">Configuration files</span>
-                <span className="text-gray-400"> (.env.example, etc.)</span>
+                <span className="text-gray-600 dark:text-gray-400"> (.env.example, etc.)</span>
               </div>
             </div>
           </div>

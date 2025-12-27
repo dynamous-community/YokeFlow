@@ -116,7 +116,7 @@ export function ScreenshotsGallery({ projectId }: ScreenshotsGalleryProps) {
 
   if (screenshots.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+      <div className="flex flex-col items-center justify-center py-12 text-gray-700 dark:text-gray-500">
         <ImageIcon className="h-16 w-16 mb-4 opacity-50" />
         <p className="text-lg font-medium">No screenshots yet</p>
         <p className="text-sm mt-2">Screenshots will appear here as sessions run</p>
@@ -166,13 +166,13 @@ export function ScreenshotsGallery({ projectId }: ScreenshotsGalleryProps) {
                 <h3 className="text-base font-medium">{groupTitle}</h3>
                 {taskDescription && (
                   <>
-                    <span className="text-gray-400">•</span>
+                    <span className="text-gray-600 dark:text-gray-400">•</span>
                     <p className="text-sm text-gray-600" title={taskDescription}>
                       {taskDescription}
                     </p>
                   </>
                 )}
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-gray-700 dark:text-gray-500">
                   ({groupScreenshots.length})
                 </span>
               </div>
@@ -200,7 +200,7 @@ export function ScreenshotsGallery({ projectId }: ScreenshotsGalleryProps) {
                       <p className="text-sm font-medium truncate" title={screenshot.filename}>
                         {screenshot.filename}
                       </p>
-                      <div className="flex items-center justify-between text-xs text-gray-500">
+                      <div className="flex items-center justify-between text-xs text-gray-700 dark:text-gray-500">
                         <span>{formatFileSize(screenshot.size)}</span>
                         <span>
                           {new Date(screenshot.modified_at).toLocaleDateString()} {new Date(screenshot.modified_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

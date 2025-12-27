@@ -19,6 +19,8 @@ from uuid import UUID, uuid4
 import hashlib
 import logging
 
+from core.config import Config
+
 logger = logging.getLogger(__name__)
 
 
@@ -339,11 +341,12 @@ class TaskDatabase:
             )
 
             if not row or not row['metadata']:
-                # Return default settings
+                # Return default settings from Config
+                config = Config.load_default()
                 return {
                     'sandbox_type': 'docker',
-                    'coding_model': 'claude-sonnet-4-5-20250929',
-                    'initializer_model': 'claude-opus-4-5-20251101',
+                    'coding_model': config.models.coding,
+                    'initializer_model': config.models.initializer,
                     'max_iterations': None,  # None = unlimited (auto-continue)
                 }
 
@@ -355,11 +358,12 @@ class TaskDatabase:
 
             settings = metadata.get('settings', {})
 
-            # Apply defaults for missing keys
+            # Apply defaults for missing keys from Config
+            config = Config.load_default()
             defaults = {
                 'sandbox_type': 'docker',
-                'coding_model': 'claude-sonnet-4-5-20250929',
-                'initializer_model': 'claude-opus-4-5-20251101',
+                'coding_model': config.models.coding,
+                'initializer_model': config.models.initializer,
                 'max_iterations': None,  # None = unlimited (auto-continue)
             }
 
@@ -1245,166 +1249,14 @@ class TaskDatabase:
             return epic
 
     # =========================================================================
-    # Review Operations
-    # =========================================================================
-
-    async def create_review(
-        self,
-        project_id: UUID,
-        session_id: UUID,
-        review_type: str,
-        metrics: Dict[str, Any],
-        issues: Optional[List[Dict]] = None,
-        reviewed_by: str = "automated"
-    ) -> Dict[str, Any]:
-        """
-        Create a review record.
-
-        Args:
-            project_id: Project UUID
-            session_id: Session UUID
-            review_type: 'quick', 'full', or 'final'
-            metrics: Review metrics dictionary
-            issues: List of issues found
-            reviewed_by: Who performed the review
-
-        Returns:
-            Created review record
-        """
-        async with self.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                INSERT INTO reviews
-                (project_id, session_id, type, metrics, issues, reviewed_by)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                RETURNING *
-                """,
-                project_id, session_id, review_type,
-                json.dumps(metrics),
-                json.dumps(issues) if issues else '[]',
-                reviewed_by
-            )
-            return dict(row)
-
-    # =========================================================================
-    # GitHub Operations
-    # =========================================================================
-
-    async def record_github_commit(
-        self,
-        project_id: UUID,
-        commit_sha: str,
-        branch: str,
-        message: str,
-        task_ids: Optional[List[int]] = None,
-        session_id: Optional[UUID] = None
-    ) -> Dict[str, Any]:
-        """
-        Record a GitHub commit.
-
-        Args:
-            project_id: Project UUID
-            commit_sha: Git commit SHA
-            branch: Branch name
-            message: Commit message
-            task_ids: List of related task IDs
-            session_id: Session that created the commit
-
-        Returns:
-            Created commit record
-        """
-        async with self.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                INSERT INTO github_commits
-                (project_id, commit_sha, branch, message, task_ids, session_id)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                ON CONFLICT (project_id, commit_sha) DO UPDATE
-                SET message = EXCLUDED.message,
-                    task_ids = EXCLUDED.task_ids
-                RETURNING *
-                """,
-                project_id, commit_sha, branch, message,
-                task_ids or [], session_id
-            )
-            return dict(row)
-
-    # =========================================================================
-    # Preferences Operations
-    # =========================================================================
-
-    async def get_project_preferences(
-        self,
-        project_id: UUID
-    ) -> Dict[str, Any]:
-        """
-        Get project preferences.
-
-        Args:
-            project_id: Project UUID
-
-        Returns:
-            Preferences dictionary
-        """
-        async with self.acquire() as conn:
-            result = await conn.fetchval(
-                """
-                SELECT preferences FROM project_preferences
-                WHERE project_id = $1
-                """,
-                project_id
-            )
-
-            if result:
-                # Parse JSON if it's a string
-                if isinstance(result, str):
-                    return json.loads(result)
-                return result
-            else:
-                # Return defaults if not set
-                return {
-                    "preferred_model": None,
-                    "preferred_coding_model": None,
-                    "preferred_review_model": None,
-                    "max_iterations": None,
-                    "auto_continue": True,
-                    "review_frequency": 5,
-                    "auto_review": False,
-                    "git_auto_commit": True,
-                    "browser_verification_required": True
-                }
-
-    async def update_project_preferences(
-        self,
-        project_id: UUID,
-        preferences: Dict[str, Any]
-    ) -> None:
-        """
-        Update project preferences (merges with existing).
-
-        Args:
-            project_id: Project UUID
-            preferences: Preferences to update
-        """
-        async with self.acquire() as conn:
-            await conn.execute(
-                """
-                INSERT INTO project_preferences (project_id, preferences)
-                VALUES ($1, $2)
-                ON CONFLICT (project_id) DO UPDATE
-                SET preferences = project_preferences.preferences || $2::jsonb,
-                    updated_at = NOW()
-                """,
-                project_id, json.dumps(preferences)
-            )
-    # =========================================================================
     # Session Quality Checks (Phase 1 Review System Integration)
     # =========================================================================
+    # Note: Legacy methods removed in cleanup (create_review, record_github_commit,
+    #       get/update_project_preferences) - tables were never used
 
     async def store_quality_check(
         self,
         session_id: UUID,
-        check_type: str,
         metrics: Dict[str, Any],
         critical_issues: List[str],
         warnings: List[str],
@@ -1412,11 +1264,10 @@ class TaskDatabase:
         check_version: str = "1.0"
     ) -> UUID:
         """
-        Store quality check results for a session.
+        Store quality check results for a session (quick checks only).
 
         Args:
             session_id: Session UUID
-            check_type: Type of check ('quick', 'deep', 'final')
             metrics: Full metrics dict from review_metrics.analyze_session_logs()
             critical_issues: List of critical issue strings
             warnings: List of warning strings
@@ -1438,7 +1289,6 @@ class TaskDatabase:
                 """
                 INSERT INTO session_quality_checks (
                     session_id,
-                    check_type,
                     check_version,
                     overall_rating,
                     playwright_count,
@@ -1450,10 +1300,10 @@ class TaskDatabase:
                     warnings,
                     metrics
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 RETURNING id
                 """,
-                session_id, check_type, check_version, overall_rating,
+                session_id, check_version, overall_rating,
                 playwright_count, playwright_screenshot_count, total_tool_uses,
                 error_count, error_rate,
                 json.dumps(critical_issues), json.dumps(warnings), json.dumps(metrics)
@@ -1464,89 +1314,129 @@ class TaskDatabase:
         self,
         session_id: UUID,
         metrics: Dict[str, Any],
-        critical_issues: List[str],
-        warnings: List[str],
         overall_rating: int,
         review_text: str,
         prompt_improvements: List[str],
-        check_version: str = "2.0"
+        review_summary: Optional[Dict[str, Any]] = None,
+        review_version: str = "2.0",
+        model: Optional[str] = None
     ) -> UUID:
         """
         Store deep review results for a session (Phase 2 Review System).
 
-        This extends store_quality_check with Claude-powered review analysis.
+        Now stores in the dedicated session_deep_reviews table.
 
         Args:
             session_id: Session UUID
-            metrics: Full metrics dict from review_metrics.analyze_session_logs()
-            critical_issues: List of critical issue strings
-            warnings: List of warning strings
+            metrics: Full metrics dict from review_metrics.analyze_session_logs() (used for quick check)
             overall_rating: 1-10 quality score
             review_text: Full review report (markdown)
             prompt_improvements: List of prompt improvement recommendations
-            check_version: Version of review logic (default: "2.0" for Phase 2)
+            review_summary: Optional structured summary data (rating, one_line, summary text)
+            review_version: Version of review logic (default: "2.0" for Phase 2)
+            model: Optional model name used for review
 
         Returns:
-            UUID of created quality check record
+            UUID of created deep review record
         """
         async with self.acquire() as conn:
-            # Extract key metrics for indexed columns
-            playwright_count = metrics.get('playwright_count', 0)
-            playwright_screenshot_count = metrics.get('playwright_screenshot_count', 0)
-            total_tool_uses = metrics.get('total_tool_uses', 0)
-            error_count = metrics.get('error_count', 0)
-            error_rate = metrics.get('error_rate', 0.0)
-
-            check_id = await conn.fetchval(
+            # Store deep review in session_deep_reviews table
+            # Use ON CONFLICT to update existing review instead of creating duplicate
+            review_id = await conn.fetchval(
                 """
-                INSERT INTO session_quality_checks (
+                INSERT INTO session_deep_reviews (
                     session_id,
-                    check_type,
-                    check_version,
+                    review_version,
                     overall_rating,
-                    playwright_count,
-                    playwright_screenshot_count,
-                    total_tool_uses,
-                    error_count,
-                    error_rate,
-                    critical_issues,
-                    warnings,
-                    metrics,
                     review_text,
-                    prompt_improvements
+                    review_summary,
+                    prompt_improvements,
+                    model
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (session_id) DO UPDATE SET
+                    review_version = EXCLUDED.review_version,
+                    overall_rating = EXCLUDED.overall_rating,
+                    review_text = EXCLUDED.review_text,
+                    review_summary = EXCLUDED.review_summary,
+                    prompt_improvements = EXCLUDED.prompt_improvements,
+                    model = EXCLUDED.model,
+                    created_at = NOW()
                 RETURNING id
                 """,
-                session_id, 'deep', check_version, overall_rating,
-                playwright_count, playwright_screenshot_count, total_tool_uses,
-                error_count, error_rate,
-                json.dumps(critical_issues), json.dumps(warnings), json.dumps(metrics),
-                review_text, json.dumps(prompt_improvements)
+                session_id,
+                review_version,
+                overall_rating,
+                review_text,
+                json.dumps(review_summary or {}),  # review_summary extracted from Executive Summary
+                json.dumps(prompt_improvements),
+                model
             )
-            return check_id
+
+            # Also store a quick check if one doesn't exist for this session
+            # (deep reviews still benefit from having the metrics stored)
+            existing_check = await conn.fetchval(
+                "SELECT id FROM session_quality_checks WHERE session_id = $1",
+                session_id
+            )
+
+            if not existing_check:
+                # Extract key metrics for indexed columns
+                playwright_count = metrics.get('playwright_count', 0)
+                playwright_screenshot_count = metrics.get('playwright_screenshot_count', 0)
+                total_tool_uses = metrics.get('total_tool_uses', 0)
+                error_count = metrics.get('error_count', 0)
+                error_rate = metrics.get('error_rate', 0.0)
+
+                await conn.execute(
+                    """
+                    INSERT INTO session_quality_checks (
+                        session_id,
+                        check_version,
+                        overall_rating,
+                        playwright_count,
+                        playwright_screenshot_count,
+                        total_tool_uses,
+                        error_count,
+                        error_rate,
+                        critical_issues,
+                        warnings,
+                        metrics
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                    """,
+                    session_id, "1.0", overall_rating,
+                    playwright_count, playwright_screenshot_count, total_tool_uses,
+                    error_count, error_rate,
+                    json.dumps([]), json.dumps([]), json.dumps(metrics)  # Empty critical_issues and warnings
+                )
+
+            return review_id
 
     async def get_session_quality(
         self,
         session_id: UUID,
-        check_type: Optional[str] = None
+        include_deep_review: bool = True
     ) -> Optional[Dict[str, Any]]:
         """
         Get quality check results for a session.
 
+        Now queries both session_quality_checks and session_deep_reviews tables.
+
         Args:
             session_id: Session UUID
-            check_type: Optional filter by check type ('quick', 'deep', 'final')
+            include_deep_review: If True, also fetch deep review data (default: True)
 
         Returns:
-            Quality check dict or None if not found
+            Quality check dict with optional deep review fields, or None if not found
         """
         async with self.acquire() as conn:
-            query = """
+            # Get quick check
+            quick_check = await conn.fetchrow(
+                """
                 SELECT
                     id,
                     session_id,
-                    check_type,
                     check_version,
                     created_at,
                     overall_rating,
@@ -1557,37 +1447,72 @@ class TaskDatabase:
                     error_rate,
                     critical_issues,
                     warnings,
-                    metrics,
-                    prompt_improvements,
-                    review_text,
-                    review_summary
+                    metrics
                 FROM session_quality_checks
                 WHERE session_id = $1
-            """
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                session_id
+            )
 
-            params = [session_id]
-
-            if check_type:
-                query += " AND check_type = $2"
-                params.append(check_type)
-
-            query += " ORDER BY created_at DESC LIMIT 1"
-
-            row = await conn.fetchrow(query, *params)
-            if not row:
+            if not quick_check:
                 return None
 
-            # Convert to dict and parse JSONB fields
-            result = dict(row)
+            # Convert to dict
+            result = dict(quick_check)
+            result['check_type'] = 'quick'  # Add for backwards compatibility
 
-            # Parse JSONB fields (asyncpg may return them as strings)
-            jsonb_fields = ['critical_issues', 'warnings', 'metrics', 'prompt_improvements', 'review_summary']
+            # Parse JSONB fields
+            jsonb_fields = ['critical_issues', 'warnings', 'metrics']
             for field in jsonb_fields:
                 if field in result and isinstance(result[field], str):
                     try:
                         result[field] = json.loads(result[field])
                     except (json.JSONDecodeError, TypeError):
-                        result[field] = [] if field in ['critical_issues', 'warnings', 'prompt_improvements'] else {}
+                        result[field] = [] if field in ['critical_issues', 'warnings'] else {}
+
+            # Get deep review if requested
+            if include_deep_review:
+                deep_review = await conn.fetchrow(
+                    """
+                    SELECT
+                        id as review_id,
+                        review_version,
+                        created_at as review_created_at,
+                        overall_rating as review_rating,
+                        review_text,
+                        review_summary,
+                        prompt_improvements,
+                        model
+                    FROM session_deep_reviews
+                    WHERE session_id = $1
+                    ORDER BY created_at DESC LIMIT 1
+                    """,
+                    session_id
+                )
+
+                if deep_review:
+                    # Add deep review fields
+                    result['has_deep_review'] = True
+                    result['review_id'] = deep_review['review_id']
+                    result['review_version'] = deep_review['review_version']
+                    result['review_created_at'] = deep_review['review_created_at']
+                    result['review_rating'] = deep_review['review_rating']
+                    result['review_text'] = deep_review['review_text']
+                    result['model'] = deep_review['model']
+
+                    # Parse JSONB fields from deep review
+                    for field in ['review_summary', 'prompt_improvements']:
+                        value = deep_review[field]
+                        if isinstance(value, str):
+                            try:
+                                result[field] = json.loads(value)
+                            except (json.JSONDecodeError, TypeError):
+                                result[field] = {} if field == 'review_summary' else []
+                        else:
+                            result[field] = value
+                else:
+                    result['has_deep_review'] = False
 
             return result
 
@@ -1622,6 +1547,56 @@ class TaskDatabase:
                 'avg_error_rate_percent': None,
                 'avg_playwright_calls_per_session': None
             }
+
+    async def list_deep_reviews(
+        self,
+        project_id: UUID
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all deep reviews for a project.
+
+        Args:
+            project_id: Project UUID
+
+        Returns:
+            List of deep review dicts with session info
+        """
+        async with self.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT
+                    dr.id,
+                    dr.session_id,
+                    s.session_number,
+                    dr.review_version,
+                    dr.created_at,
+                    dr.overall_rating,
+                    dr.review_text,
+                    dr.review_summary,
+                    dr.prompt_improvements,
+                    dr.model
+                FROM session_deep_reviews dr
+                JOIN sessions s ON dr.session_id = s.id
+                WHERE s.project_id = $1
+                ORDER BY s.session_number ASC
+                """,
+                project_id
+            )
+
+            results = []
+            for row in rows:
+                result = dict(row)
+                # Parse JSONB fields
+                for field in ['review_summary', 'prompt_improvements']:
+                    value = result.get(field)
+                    if isinstance(value, str):
+                        try:
+                            result[field] = json.loads(value)
+                        except (json.JSONDecodeError, TypeError):
+                            result[field] = {} if field == 'review_summary' else []
+                results.append(result)
+
+            return results
 
     async def get_sessions_with_quality_issues(
         self,
@@ -1992,130 +1967,58 @@ class TaskDatabase:
                     proposal_id, status
                 )
 
-    async def create_prompt_version(
+    async def get_project_review_stats(
         self,
-        prompt_file: str,
-        version_name: str,
-        content: str,
-        git_commit_hash: Optional[str] = None,
-        parent_version_id: Optional[UUID] = None,
-        changes_summary: Optional[str] = None,
-        created_by: Optional[str] = None
-    ) -> UUID:
+        project_id: UUID
+    ) -> Dict[str, Any]:
         """
-        Create a new prompt version record.
-
-        Args:
-            prompt_file: Name of prompt file
-            version_name: Version identifier
-            content: Full prompt content
-            git_commit_hash: Optional git commit
-            parent_version_id: Previous version UUID
-            changes_summary: Description of changes
-            created_by: Who created this version
+        Get project statistics including session count and deep review coverage.
 
         Returns:
-            Version UUID
+            Dict with total_sessions, sessions_with_reviews, sessions_without_reviews, coverage_percent, unreviewed_session_numbers
         """
         async with self.acquire() as conn:
-            row = await conn.fetchrow(
+            stats = await conn.fetchrow(
                 """
-                INSERT INTO prompt_versions (
-                    prompt_file,
-                    version_name,
-                    content,
-                    git_commit_hash,
-                    parent_version_id,
-                    changes_summary,
-                    created_by
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
-                RETURNING id
+                SELECT
+                    COUNT(DISTINCT s.id) as total_sessions,
+                    COUNT(dr.id) as sessions_with_reviews,
+                    COUNT(DISTINCT s.id) - COUNT(dr.id) as sessions_without_reviews,
+                    CASE
+                        WHEN COUNT(DISTINCT s.id) > 0
+                        THEN ROUND((COUNT(dr.id)::decimal / COUNT(DISTINCT s.id)::decimal) * 100, 1)
+                        ELSE 0
+                    END as coverage_percent
+                FROM sessions s
+                LEFT JOIN session_deep_reviews dr ON s.id = dr.session_id
+                WHERE s.project_id = $1 AND s.type = 'coding' AND s.status = 'completed'
                 """,
-                prompt_file,
-                version_name,
-                content,
-                git_commit_hash,
-                parent_version_id,
-                changes_summary,
-                created_by
-            )
-            return row['id']
-
-    async def get_prompt_versions(
-        self,
-        prompt_file: str,
-        limit: int = 20
-    ) -> List[Dict[str, Any]]:
-        """
-        Get version history for a prompt file.
-
-        Args:
-            prompt_file: Name of prompt file
-            limit: Maximum number to return
-
-        Returns:
-            List of version records
-        """
-        async with self.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT * FROM v_version_performance
-                WHERE prompt_file = $1
-                ORDER BY created_at DESC
-                LIMIT $2
-                """,
-                prompt_file, limit
-            )
-            return [dict(row) for row in rows]
-
-    async def get_active_prompt_version(
-        self,
-        prompt_file: str
-    ) -> Optional[Dict[str, Any]]:
-        """Get the currently active version for a prompt file."""
-        async with self.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT * FROM prompt_versions
-                WHERE prompt_file = $1 AND is_active = true
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                prompt_file
-            )
-            return dict(row) if row else None
-
-    async def set_active_prompt_version(
-        self,
-        version_id: UUID,
-        prompt_file: str
-    ):
-        """
-        Set a version as the active one for a prompt file.
-
-        Deactivates all other versions of the same file.
-        """
-        async with self.transaction() as conn:
-            # Deactivate all versions of this file
-            await conn.execute(
-                """
-                UPDATE prompt_versions
-                SET is_active = false
-                WHERE prompt_file = $1
-                """,
-                prompt_file
+                project_id
             )
 
-            # Activate the specified version
-            await conn.execute(
+            # Get list of unreviewed session numbers (exclude Session 0 - initialization)
+            unreviewed = await conn.fetch(
                 """
-                UPDATE prompt_versions
-                SET is_active = true
-                WHERE id = $1
+                SELECT s.session_number
+                FROM sessions s
+                LEFT JOIN session_deep_reviews dr ON s.id = dr.session_id
+                WHERE s.project_id = $1
+                  AND s.status = 'completed'
+                  AND s.type = 'coding'
+                  AND dr.id IS NULL
+                ORDER BY s.session_number
                 """,
-                version_id
+                project_id
             )
+
+            result = dict(stats) if stats else {
+                'total_sessions': 0,
+                'sessions_with_reviews': 0,
+                'sessions_without_reviews': 0,
+                'coverage_percent': 0.0
+            }
+            result['unreviewed_session_numbers'] = [row['session_number'] for row in unreviewed]
+            return result
 
 
 # =============================================================================

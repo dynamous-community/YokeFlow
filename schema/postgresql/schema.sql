@@ -1,13 +1,14 @@
 -- =============================================================================
 -- YokeFlow (Autonomous Coding Agent) - Complete PostgreSQL Schema
 -- =============================================================================
--- Version: 2.1.0
--- Date: December 23, 2025
+-- Version: 2.2.0
+-- Date: December 25, 2025
 --
 -- This is the consolidated schema file that reflects the current database state.
 -- All migrations have been applied and consolidated into this single file.
 --
 -- Changelog:
+--   2.2.0 (Dec 25, 2025): Added total_time_seconds, removed budget_usd, updated trigger
 --   2.1.0 (Dec 23, 2025): Added session heartbeat tracking
 --   2.0.0 (Dec 2025): Initial consolidated schema
 --
@@ -99,17 +100,17 @@ CREATE TABLE projects (
     sandbox_config JSONB DEFAULT '{}',
     api_endpoint TEXT,
 
-    -- Project status and costs
+    -- Project status and metrics
     status project_status DEFAULT 'active',
     total_cost_usd DECIMAL(10,4) DEFAULT 0,
-    budget_usd DECIMAL(10,4),
+    total_time_seconds INTEGER DEFAULT 0,
 
     -- Flexible metadata storage
     metadata JSONB DEFAULT '{}',
 
     -- Constraints
-    CONSTRAINT valid_budget CHECK (budget_usd IS NULL OR budget_usd >= 0),
-    CONSTRAINT valid_total_cost CHECK (total_cost_usd >= 0)
+    CONSTRAINT valid_total_cost CHECK (total_cost_usd >= 0),
+    CONSTRAINT valid_total_time CHECK (total_time_seconds >= 0)
 );
 
 CREATE INDEX idx_projects_user_id ON projects(user_id) WHERE user_id IS NOT NULL;
@@ -117,8 +118,10 @@ CREATE INDEX idx_projects_status ON projects(status);
 CREATE INDEX idx_projects_name ON projects(name);
 CREATE INDEX idx_projects_metadata ON projects USING GIN (metadata);
 CREATE INDEX idx_projects_completed_at ON projects(completed_at);
+CREATE INDEX idx_projects_total_time ON projects(total_time_seconds);
 
 COMMENT ON COLUMN projects.completed_at IS 'Timestamp when all epics/tasks/tests were completed. NULL means project is still in progress.';
+COMMENT ON COLUMN projects.total_time_seconds IS 'Total time spent on project in seconds, automatically aggregated from session durations';
 
 -- -----------------------------------------------------------------------------
 -- Sessions Table - Track all agent sessions
@@ -260,50 +263,9 @@ CREATE INDEX idx_tests_passes ON tests(passes);
 CREATE INDEX idx_tests_category ON tests(category);
 
 -- -----------------------------------------------------------------------------
--- Reviews Table - Quality tracking (legacy, kept for compatibility)
--- -----------------------------------------------------------------------------
-CREATE TABLE reviews (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-
-    type VARCHAR(20) NOT NULL CHECK (type IN ('quick', 'full', 'final')),
-
-    -- Store all metrics as JSONB for flexibility
-    metrics JSONB NOT NULL DEFAULT '{}',
-
-    -- Analysis results
-    issues JSONB DEFAULT '[]',
-
-    -- Review metadata
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    reviewed_by TEXT NOT NULL,
-
-    -- Generated columns for commonly queried metrics
-    browser_verification_score DECIMAL(5,2) GENERATED ALWAYS AS
-        (CASE
-            WHEN metrics->>'browser_verification_score' IS NOT NULL
-            THEN (metrics->>'browser_verification_score')::DECIMAL
-            ELSE NULL
-        END) STORED,
-
-    overall_quality_score INTEGER GENERATED ALWAYS AS
-        (CASE
-            WHEN metrics->>'overall_quality_score' IS NOT NULL
-            THEN (metrics->>'overall_quality_score')::INTEGER
-            ELSE NULL
-        END) STORED
-);
-
-CREATE INDEX idx_reviews_project_id ON reviews(project_id);
-CREATE INDEX idx_reviews_session_id ON reviews(session_id);
-CREATE INDEX idx_reviews_type ON reviews(type);
-CREATE INDEX idx_reviews_quality ON reviews(overall_quality_score);
-CREATE INDEX idx_reviews_issues ON reviews USING GIN (issues);
-
--- -----------------------------------------------------------------------------
 -- Session Quality Checks Table - Phase 1 & 2 Review System
 -- -----------------------------------------------------------------------------
+-- Note: The old 'reviews' table was removed in Migration 007 (never used)
 CREATE TABLE session_quality_checks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -351,6 +313,47 @@ COMMENT ON TABLE session_quality_checks IS 'Automated quality check results for 
 COMMENT ON COLUMN session_quality_checks.check_type IS 'Type of quality check: quick (metrics only, $0), deep (Claude analysis, ~$0.10), final (comprehensive project review)';
 COMMENT ON COLUMN session_quality_checks.playwright_count IS 'Total Playwright browser automation calls. Critical quality metric with r=0.98 correlation to session quality. 0 = critical issue, 1-9 = minimal, 10-49 = good, 50+ = excellent';
 COMMENT ON COLUMN session_quality_checks.overall_rating IS '1-10 quality score. Based on browser verification, error rate, and critical issues. NULL for checks that do not calculate ratings.';
+
+-- -----------------------------------------------------------------------------
+-- Deep Review Results (Phase 2 Review System)
+-- -----------------------------------------------------------------------------
+-- Note: Added via Migration 003 (separate_deep_reviews.sql)
+-- Separated from session_quality_checks for cleaner architecture
+
+CREATE TABLE session_deep_reviews (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+
+    -- Review version and timing
+    review_version VARCHAR(20),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    -- Overall score (1-10)
+    overall_rating INTEGER,
+
+    -- Deep review results
+    review_text TEXT,
+    review_summary JSONB DEFAULT '{}',
+    prompt_improvements JSONB DEFAULT '[]',
+
+    -- Model used for review
+    model VARCHAR(100),
+
+    -- Constraints
+    CONSTRAINT valid_deep_review_rating CHECK (overall_rating IS NULL OR (overall_rating >= 1 AND overall_rating <= 10)),
+    CONSTRAINT unique_session_deep_review UNIQUE (session_id)  -- Each session can have at most one deep review
+);
+
+CREATE INDEX idx_deep_reviews_session ON session_deep_reviews(session_id);
+CREATE INDEX idx_deep_reviews_created ON session_deep_reviews(created_at DESC);
+CREATE INDEX idx_deep_reviews_rating ON session_deep_reviews(overall_rating) WHERE overall_rating IS NOT NULL;
+CREATE INDEX idx_deep_reviews_improvements ON session_deep_reviews USING GIN (prompt_improvements);
+
+COMMENT ON TABLE session_deep_reviews IS 'Deep review results for coding sessions. Automated or on-demand Claude-powered reviews for prompt improvement analysis.';
+COMMENT ON COLUMN session_deep_reviews.overall_rating IS '1-10 quality score from deep review analysis. May differ from quick check rating.';
+COMMENT ON COLUMN session_deep_reviews.review_text IS 'Full markdown review text from Claude, including analysis and recommendations.';
+COMMENT ON COLUMN session_deep_reviews.prompt_improvements IS 'Structured list of recommendation strings extracted from review text for aggregation across sessions.';
+COMMENT ON CONSTRAINT unique_session_deep_review ON session_deep_reviews IS 'Ensures each session has at most one deep review. If a session needs to be re-reviewed, the existing review should be updated rather than creating a new one.';
 
 -- -----------------------------------------------------------------------------
 -- Prompt Improvement System Tables (Phase 4)
@@ -435,87 +438,11 @@ CREATE INDEX idx_proposals_analysis ON prompt_proposals(analysis_id);
 CREATE INDEX idx_proposals_status ON prompt_proposals(status);
 CREATE INDEX idx_proposals_file ON prompt_proposals(prompt_file);
 
--- Prompt Versions
-CREATE TABLE prompt_versions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-
-    prompt_file VARCHAR(100) NOT NULL,
-    version_name VARCHAR(100) NOT NULL,
-    content TEXT NOT NULL,
-    git_commit_hash VARCHAR(40),
-
-    -- Metadata
-    parent_version_id UUID REFERENCES prompt_versions(id),
-    changes_summary TEXT,
-    created_by VARCHAR(100),
-
-    -- Performance tracking
-    projects_using INTEGER DEFAULT 0,
-    avg_quality_rating DECIMAL(3,1),
-    total_sessions INTEGER DEFAULT 0,
-
-    is_active BOOLEAN DEFAULT false,
-    is_default BOOLEAN DEFAULT false,
-
-    CONSTRAINT unique_version_name UNIQUE (prompt_file, version_name)
-);
-
-CREATE INDEX idx_versions_file ON prompt_versions(prompt_file);
-CREATE INDEX idx_versions_active ON prompt_versions(is_active);
-CREATE INDEX idx_versions_default ON prompt_versions(is_default);
-
 COMMENT ON TABLE prompt_improvement_analyses IS 'Stores cross-project prompt improvement analyses';
 COMMENT ON TABLE prompt_proposals IS 'Individual prompt change proposals from analyses';
-COMMENT ON TABLE prompt_versions IS 'Version history of prompt files for tracking and rollback';
 
--- -----------------------------------------------------------------------------
--- GitHub Integration Tables
--- -----------------------------------------------------------------------------
-CREATE TABLE github_commits (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
-
-    commit_sha VARCHAR(40) NOT NULL,
-    branch VARCHAR(100) NOT NULL,
-    message TEXT,
-    author_name VARCHAR(255),
-    author_email VARCHAR(255),
-
-    task_ids INTEGER[] DEFAULT '{}',
-
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    committed_at TIMESTAMPTZ,
-
-    UNIQUE(project_id, commit_sha)
-);
-
-CREATE INDEX idx_commits_project_id ON github_commits(project_id);
-CREATE INDEX idx_commits_session_id ON github_commits(session_id);
-CREATE INDEX idx_commits_branch ON github_commits(branch);
-CREATE INDEX idx_commits_tasks ON github_commits USING GIN (task_ids);
-
--- -----------------------------------------------------------------------------
--- Project Preferences
--- -----------------------------------------------------------------------------
-CREATE TABLE project_preferences (
-    project_id UUID PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
-
-    preferences JSONB DEFAULT '{
-        "preferred_model": null,
-        "preferred_coding_model": null,
-        "preferred_review_model": null,
-        "max_iterations": null,
-        "auto_continue": true,
-        "review_frequency": 5,
-        "auto_review": false,
-        "git_auto_commit": true,
-        "browser_verification_required": true
-    }',
-
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- Note: github_commits and project_preferences tables removed in Migration 007
+-- (GitHub integration never implemented, preferences handled by config files)
 
 -- =============================================================================
 -- VIEWS
@@ -729,25 +656,6 @@ JOIN prompt_improvement_analyses a ON p.analysis_id = a.id
 WHERE p.status = 'proposed'
 ORDER BY p.confidence_level DESC, p.created_at DESC;
 
--- Prompt Version Performance Comparison
-CREATE OR REPLACE VIEW v_version_performance AS
-SELECT
-    v.id,
-    v.prompt_file,
-    v.version_name,
-    v.created_at,
-    v.is_active,
-    v.is_default,
-    v.projects_using,
-    v.total_sessions,
-    v.avg_quality_rating,
-    CASE
-        WHEN v.total_sessions > 0 THEN v.avg_quality_rating
-        ELSE NULL
-    END as normalized_quality
-FROM prompt_versions v
-ORDER BY v.prompt_file, v.created_at DESC;
-
 -- =============================================================================
 -- FUNCTIONS AND TRIGGERS
 -- =============================================================================
@@ -774,24 +682,26 @@ CREATE TRIGGER update_project_preferences_updated_at
     EXECUTE FUNCTION update_updated_at();
 
 -- -----------------------------------------------------------------------------
--- Update Project Cost on Session Complete
+-- Update Project Metrics (Cost and Time) on Session Complete
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION update_project_cost()
+CREATE OR REPLACE FUNCTION update_project_metrics()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.status = 'completed' AND OLD.status != 'completed' THEN
         UPDATE projects
-        SET total_cost_usd = total_cost_usd + COALESCE((NEW.metrics->>'cost_usd')::DECIMAL, 0)
+        SET
+            total_cost_usd = total_cost_usd + COALESCE((NEW.metrics->>'cost_usd')::DECIMAL, 0),
+            total_time_seconds = total_time_seconds + COALESCE(ROUND((NEW.metrics->>'duration_seconds')::NUMERIC)::INTEGER, 0)
         WHERE id = NEW.project_id;
     END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_project_cost_on_session_complete
+CREATE TRIGGER update_project_metrics_on_session_complete
     AFTER UPDATE ON sessions
     FOR EACH ROW
-    EXECUTE FUNCTION update_project_cost();
+    EXECUTE FUNCTION update_project_metrics();
 
 -- -----------------------------------------------------------------------------
 -- Validate Session Type Consistency (0-based session numbering)

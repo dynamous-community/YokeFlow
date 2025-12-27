@@ -166,7 +166,7 @@ export function ProjectDetailsPanel({
             }`}
           >
             Epics
-            <span className="ml-2 text-sm text-gray-500">({project.progress.total_epics})</span>
+            <span className="ml-2 text-sm text-gray-700 dark:text-gray-500">({project.progress.total_epics})</span>
           </button>
         </div>
 
@@ -211,7 +211,7 @@ export function ProjectDetailsPanel({
                   <div className="mb-4 flex items-start justify-between">
                     <div>
                       <h3 className="text-lg font-semibold text-gray-100 mb-2">Project Roadmap</h3>
-                      <p className="text-sm text-gray-400">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
                         {project.progress.completed_epics}/{project.progress.total_epics} epics complete •
                         {' '}{project.progress.completed_tasks}/{project.progress.total_tasks} tasks complete •
                         {' '}{project.progress.passing_tests}/{project.progress.total_tests} tests passing

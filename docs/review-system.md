@@ -1,21 +1,24 @@
 # Review System - Developer Guide
 
-**Last Updated:** December 23, 2025
-**Status:** Production Ready (Phases 1-3 Complete)
+**Last Updated:** December 26, 2025
+**Status:** Production Ready (All 4 Phases Complete)
 
 ---
 
 ## Overview
 
-The review system provides automated quality analysis for agent sessions with three integrated phases:
+The review system provides automated quality analysis for agent sessions with four integrated phases:
 
 1. **Phase 1:** Quick checks (zero-cost, every session)
 2. **Phase 2:** Deep reviews (AI-powered, ~$0.10 each, automated triggers)
 3. **Phase 3:** Web UI dashboard (visual quality monitoring)
+4. **Phase 4:** Prompt improvement analyzer (automated prompt optimization) ✨ **NEW**
 
-This system helps identify issues early, suggests prompt improvements, and tracks quality trends over time.
+This system helps identify issues early, suggests prompt improvements, tracks quality trends over time, and automatically aggregates recommendations across sessions to identify systematic improvements.
 
-**Note:** Deep reviews include suggestions for manually improving coding prompts. These can be downloaded from the Quality Dashboard and reviewed by developers to enhance the `prompts/coding_prompt.md` and `prompts/coding_prompt_docker.md` files.
+**Workflow Evolution:**
+- **Old (Manual):** Deep reviews suggest improvements → Developer downloads reviews → Manually reads all reviews → Applies changes to prompts
+- **New (Automated):** Deep reviews suggest improvements → **Analyzer aggregates similar issues across sessions** → Presents prioritized, deduplicated proposals with evidence → Developer applies top recommendations
 
 ---
 
@@ -537,24 +540,24 @@ If quality drops below 7/10, additional deep reviews may trigger.
    - Read prompt improvement suggestions
    - Manually apply relevant suggestions to prompt files
 
-### Manual Deep Review (CLI)
+### Manual Deep Review (Web UI)
 
-```bash
-# Review specific session
-python review/review_agent.py generations/my_project 5
+Trigger deep reviews manually via the Web UI:
 
-# Output:
-# Session 5 Deep Review:
-# Rating: 8/10
-#
-# Full Review (Markdown):
-# [Complete markdown review text from Claude including:]
-# - Session quality rating with justification
-# - Browser verification analysis
-# - Error pattern analysis
-# - Prompt adherence evaluation
-# - Concrete prompt improvement recommendations
-```
+1. Navigate to project detail page → Quality tab
+2. Use "Trigger More Reviews" button
+3. Select mode:
+   - **Unreviewed Sessions Only** - Review sessions without existing reviews
+   - **Last N Sessions** - Review most recent N sessions
+   - **Specific Session** - Review a single session
+   - **All Sessions** - Review all completed coding sessions
+
+Reviews include:
+- Session quality rating with justification
+- Browser verification analysis
+- Error pattern analysis
+- Prompt adherence evaluation
+- Concrete prompt improvement recommendations
 
 ### Checking Trigger Status
 
@@ -628,15 +631,167 @@ should_trigger = await should_trigger_deep_review(
 
 ---
 
+## Phase 4: Prompt Improvement Analyzer ✨ NEW
+
+**File:** [`review/prompt_improvement_analyzer.py`](../review/prompt_improvement_analyzer.py)
+**Status:** ✅ Production Ready (December 2025)
+**Cost:** $0 (uses existing deep review data)
+
+### What It Does
+
+Automatically analyzes deep reviews across sessions to identify systematic prompt improvements:
+
+1. **Aggregates Recommendations** - Finds similar issues mentioned across multiple sessions
+2. **Theme-Based Clustering** - Groups recommendations into 8 categories (Browser Verification, Docker Mode, Testing, etc.)
+3. **Deduplication** - Merges proposals with identical proposed text but different themes
+4. **Confidence Scoring** - Ranks proposals 1-10 based on frequency, session quality, and impact
+5. **Evidence Tracking** - Links each proposal to specific sessions with detailed evidence
+
+### Key Features
+
+**Automated Analysis:**
+- Triggered from Web UI "Prompt Improvements" tab
+- Analyzes all deep reviews with recommendations for a project
+- Stores results in database for tracking and history
+
+**Smart Aggregation:**
+- 8 theme categories with keyword-based clustering
+- Deduplication prevents duplicate proposals
+- Evidence aggregation shows which sessions had which issues
+
+**Prioritization:**
+- Confidence scoring (1-10) based on:
+  - Frequency across sessions (weight: 0.4)
+  - Number of unique sessions (weight: 0.3)
+  - Session quality scores (weight: 0.2)
+  - Priority level from reviews (weight: 0.1)
+
+**Database Integration:**
+- `prompt_improvement_analyses` - Analysis metadata and patterns
+- `prompt_proposals` - Individual improvement proposals with evidence
+- Tracks status: proposed → accepted/rejected → implemented
+
+### Web UI Dashboard
+
+**Location:** Quality Dashboard → "Prompt Improvements" tab
+
+**Features:**
+- View all analyses with summary statistics
+- Drill into analysis details to see:
+  - Patterns identified by theme (collapsible)
+  - Prioritized proposals with confidence scores
+  - Evidence linking to specific sessions
+- Delete old analyses
+- Track proposal implementation status
+
+### How to Use
+
+1. **Run Deep Reviews** - Let sessions run, deep reviews accumulate
+2. **Trigger Analysis** - Click "Analyze Projects" in Prompt Improvements tab
+3. **Review Proposals** - Examine prioritized list with evidence
+4. **Apply Changes** - Manually apply high-confidence proposals to prompts
+5. **Monitor Impact** - Watch quality improvements in subsequent sessions
+
+### Database Schema
+
+```sql
+-- Analysis metadata
+CREATE TABLE prompt_improvement_analyses (
+    id UUID PRIMARY KEY,
+    projects_analyzed UUID[],           -- Array of project IDs
+    sandbox_type VARCHAR(10) NOT NULL,  -- 'docker' or 'local' (determines prompt file)
+    sessions_analyzed INTEGER,
+    patterns_identified JSONB,          -- Theme aggregation data
+    status VARCHAR(20),                 -- 'running' | 'completed' | 'failed'
+    triggered_by VARCHAR(50),
+    created_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
+);
+
+-- Individual proposals
+CREATE TABLE prompt_proposals (
+    id UUID PRIMARY KEY,
+    analysis_id UUID REFERENCES prompt_improvement_analyses(id) ON DELETE CASCADE,
+    prompt_file VARCHAR(100),           -- 'coding_prompt_docker.md' or 'coding_prompt_local.md'
+    section_name VARCHAR(255),          -- Can be multiple: "testing, browser_verification"
+    original_text TEXT,
+    proposed_text TEXT,
+    change_type VARCHAR(50),            -- 'modification' | 'addition' | 'removal'
+    rationale TEXT,
+    evidence JSONB,                     -- {frequency, unique_sessions, session_ids, session_numbers}
+    confidence_level INTEGER,           -- 1-10 score
+    status VARCHAR(20),                 -- 'proposed' | 'accepted' | 'rejected' | 'implemented'
+    created_at TIMESTAMPTZ
+);
+```
+
+### Design Decisions
+
+**Why sandbox_type is Required:**
+- Must know which prompt file to modify: `coding_prompt_docker.md` or `coding_prompt_local.md`
+- Extracted from project metadata, defaults to 'docker'
+- Never NULL - enforced at database and application level
+
+**Why Deduplication:**
+- Multiple themes can identify the same underlying issue
+- Prevents duplicate proposals with identical text
+- Combines evidence from all matching themes
+
+**Why Theme-Based Clustering:**
+- 8 predefined categories based on common patterns
+- Keyword matching for automatic assignment
+- Future: ML-based semantic similarity
+
+**Why Manual Application:**
+- Human judgment needed for global prompt changes
+- Careful review before modifying core agent behavior
+- Flexibility to adapt suggestions to specific use cases
+
+### Integration with Phases 1-3
+
+```
+Phase 1 (Quick Check) → Stores metrics
+         ↓
+Phase 2 (Deep Review) → Generates recommendations, stores in review_text
+         ↓
+Phase 3 (Web UI) → Displays individual reviews
+         ↓
+Phase 4 (Analyzer) → Aggregates recommendations across sessions
+                   → Identifies systematic patterns
+                   → Prioritizes improvements
+                   → Tracks implementation
+```
+
+### Cost Analysis
+
+**Zero Additional Cost:**
+- Uses existing deep review data
+- No additional API calls
+- Pure data analysis and aggregation
+
+**Time Investment:**
+- Analysis takes 1-2 seconds per project
+- Review proposals: 5-10 minutes
+- Apply changes: 10-30 minutes per proposal
+- ROI: Systematic improvements across all future sessions
+
+---
+
 ## Future Enhancements
 
-**Phases 1-3:**
+**Phase 4 Improvements:**
+- Multi-project analysis (currently single project)
+- ML-based semantic similarity clustering
+- A/B testing for prompt changes
+- Automatic proposal application with rollback
+- Prompt version tracking and comparison
+
+**Other Enhancements:**
 - Manual review trigger button in UI
 - Quality filters and search
 - PDF report export
 - Email/Slack alerts for critical issues
 - Cross-project comparative analysis
-- Automated prompt improvement analysis system
 
 See [TODO-FUTURE.md](../TODO-FUTURE.md) for complete roadmap.
 
@@ -683,13 +838,25 @@ The review system is production-ready and provides a complete feedback loop for 
 - ✅ Deep review display with download option
 - ✅ Manual prompt improvement workflow
 
-**Total Cost:** ~$0.40 per 20-session project
+**Phase 4 - Prompt Improvement Analyzer:** ✨ **NEW**
+- ✅ Automated aggregation of recommendations across sessions
+- ✅ Theme-based clustering (8 categories)
+- ✅ Deduplication of identical proposals
+- ✅ Confidence scoring and prioritization (1-10)
+- ✅ Evidence tracking with session links
+- ✅ Web UI dashboard for review and application
+
+**Total Cost:** ~$0.40 per 20-session project (Phase 4 adds $0 - uses existing data)
 
 **The Complete Loop:**
 1. Sessions run → Quick checks identify issues
-2. Deep reviews analyze patterns → Store full recommendations in review text
+2. Deep reviews analyze patterns → Store full recommendations in review_text
 3. Dashboard shows quality trends → Download reviews
-4. Developer reads suggestions → Manually apply to prompts
-5. New sessions run → Monitor quality improvements
+4. **Analyzer aggregates recommendations** → Identifies systematic patterns ✨ **NEW**
+5. **Developer reviews prioritized proposals** → Applies high-confidence changes ✨ **NEW**
+6. New sessions run → Monitor quality improvements
+
+**Key Improvement:**
+Instead of manually reading all deep reviews to find patterns, Phase 4 automatically aggregates similar recommendations, deduplicates them, and presents a prioritized list with evidence. This reduces review time from hours to minutes while ensuring no systematic issues are missed.
 
 Use this system to identify issues early, improve your prompts systematically, and track quality trends over time!

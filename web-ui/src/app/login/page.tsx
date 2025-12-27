@@ -45,7 +45,7 @@ export default function LoginPage() {
       <div className="min-h-screen flex items-center justify-center bg-gray-950">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading...</p>
+          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
         </div>
       </div>
     );
@@ -59,7 +59,7 @@ export default function LoginPage() {
           <h1 className="text-4xl font-bold text-gray-100 mb-2">
             YokeFlow
           </h1>
-          <p className="text-gray-400">
+          <p className="text-gray-600 dark:text-gray-400">
             Sign in to access the platform
           </p>
         </div>
@@ -103,7 +103,7 @@ export default function LoginPage() {
         </div>
 
         {/* Info Note */}
-        <div className="mt-6 text-center text-sm text-gray-500">
+        <div className="mt-6 text-center text-sm text-gray-700 dark:text-gray-500">
           <p>Single-user authentication for production deployment</p>
         </div>
       </div>

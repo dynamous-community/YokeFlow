@@ -257,7 +257,7 @@ python scripts/init_database.py --url postgresql://...      # Custom URL
 
 **Features:**
 - Creates database if not exists
-- Runs all schema migrations
+- Runs initial schema setup
 - Sets up tables, views, indexes
 - Validates schema after creation
 
