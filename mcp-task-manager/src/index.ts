@@ -587,13 +587,37 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'bash_docker':
         // Get Docker configuration from environment
         const containerName = process.env.DOCKER_CONTAINER_NAME || 'yokeflow-container';
-        const command = args?.command as string;
+        let command = args?.command as string;
 
         if (!command) {
           throw new Error('Command is required for bash_docker');
         }
 
         console.error(`[bash_docker] Executing in container ${containerName}: ${command.substring(0, 100)}`);
+
+        // Check if command contains a heredoc and transform it if needed
+        const heredocPattern = /cat\s*>\s*([^\s]+)\s*<<\s*['"]?(\w+)['"]?/;
+        const hasHeredoc = heredocPattern.test(command);
+
+        if (hasHeredoc) {
+          console.error(`[bash_docker] Detected heredoc syntax, transforming command`);
+
+          // Transform heredoc to use printf or echo with base64
+          const fullHeredocPattern = /cat\s*>\s*([^\s]+)\s*<<\s*['"]?(\w+)['"]?\n([\s\S]*?)\n\2/;
+          const match = command.match(fullHeredocPattern);
+
+          if (match) {
+            const [fullMatch, fileName, , content] = match; // delimiter not needed for base64 approach
+
+            // Use base64 encoding for reliability
+            const base64Content = Buffer.from(content).toString('base64');
+            const base64Command = `echo "${base64Content}" | base64 -d > ${fileName}`;
+
+            // Replace heredoc with base64 command
+            command = command.replace(fullMatch, base64Command);
+            console.error(`[bash_docker] Transformed heredoc to base64 encoding`);
+          }
+        }
 
         try {
           // Execute command in Docker container

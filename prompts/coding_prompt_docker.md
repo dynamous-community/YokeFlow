@@ -4,11 +4,11 @@
 
 ## ⚠️ MOST IMPORTANT RULES (Read First!)
 
-**1. NEVER create files using bash commands (THIS ALWAYS FAILS IN DOCKER):**
-- ❌ `cat > file.js << 'EOF'` → **FAILS 100% OF THE TIME** in docker exec (heredoc escaping broken)
-- ❌ `echo "content" > file.js` → **FAILS** (quote/newline escaping broken)
-- ❌ Base64, python, or shell script workarounds → **ALL FAIL**
-- ✅ **ONLY use Write tool** for creating files - NO EXCEPTIONS!
+**1. ALWAYS use Write tool for file creation (most reliable):**
+- ✅ **Write tool** → Best practice for all file creation
+- ⚠️ `cat > file.js << 'EOF'` → Now supported (auto-converted to base64) but Write is cleaner
+- ❌ `echo "content" > file.js` → Still fails (quote/newline escaping issues)
+- ❌ Other workarounds → Generally unreliable
 
 **2. File extensions matter (package.json has "type": "module"):**
 - ✅ Use `.cjs` extension for CommonJS files (require/module.exports)
@@ -178,7 +178,7 @@ Edit({
 - ✅ Executes inside container at `/workspace`
 
 **🚫 NEVER use bash_docker for file creation:**
-- ❌ DO NOT use: `cat > file.js << 'EOF'` (heredocs fail in docker exec)
+- ⚠️ AVOID: `cat > file.js << 'EOF'` (now works but Write tool is cleaner)
 - ❌ DO NOT use: `echo "content" > file.js` (escaping nightmares)
 - ❌ DO NOT use: base64 encoding, python scripts, or other workarounds
 - ✅ ALWAYS use Write tool for creating files with multi-line content
@@ -275,25 +275,24 @@ bash_docker({ command: "for i in {1..15}; do curl -s http://localhost:5173 > /de
 
 ## ❌ COMMON MISTAKES - DO NOT DO THIS
 
-### Mistake 1: Trying to create files with bash heredoc (MOST COMMON ERROR!)
+### Mistake 1: Creating files with bash commands instead of Write tool
 
 ```bash
-# ❌ WRONG - This ALWAYS FAILS in docker exec
+# ⚠️ NOW WORKS but NOT RECOMMENDED - Heredocs are automatically converted
 bash_docker({
   command: "cat > test.js << 'EOF'\nconst test = 'hello';\nEOF"
 })
-# Error: "syntax error near unexpected token" EVERY TIME
-# Reason: Docker exec mangles heredoc syntax - THIS NEVER WORKS
+# This now works (converted to base64 internally) but Write tool is better
 
-# ❌ ALSO WRONG - Trying to create Playwright tests with heredoc
+# ⚠️ TECHNICALLY WORKS but use Write instead
 bash_docker({
   command: "cat > /tmp/verify.js << 'EOF'\nconst { chromium } = require('playwright');\n..."
 })
-# FAILS 100% OF THE TIME - Docker exec cannot handle heredocs
+# Heredocs are now supported via automatic base64 conversion
 ```
 
 ```javascript
-// ✅ CORRECT - ALWAYS use Write tool for file creation
+// ✅ BEST PRACTICE - ALWAYS use Write tool for file creation
 Write({
   file_path: "test.cjs",  // Use .cjs for CommonJS!
   content: `const test = 'hello';
@@ -301,7 +300,7 @@ console.log(test);`
 })
 // Works perfectly! Volume mount syncs to container instantly.
 
-// ✅ CORRECT - Creating Playwright test files
+// ✅ RECOMMENDED - Creating Playwright test files
 Write({
   file_path: "verify_task_123.cjs",  // Note: .cjs extension!
   content: `const { chromium } = require('playwright');
