@@ -68,6 +68,12 @@ class ProjectConfig:
 
 
 @dataclass
+class ReviewConfig:
+    """Configuration for review and prompt improvement settings."""
+    min_reviews_for_analysis: int = 5  # Minimum deep reviews required for prompt improvement analysis
+
+
+@dataclass
 class SandboxConfig:
     """Configuration for sandbox settings."""
     type: str = "none"  # Options: "none", "docker", "e2b"
@@ -95,6 +101,7 @@ class Config:
     security: SecurityConfig = field(default_factory=SecurityConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     project: ProjectConfig = field(default_factory=ProjectConfig)
+    review: ReviewConfig = field(default_factory=ReviewConfig)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
 
     @classmethod
@@ -149,6 +156,11 @@ class Config:
                 config.project.default_generations_dir = data['project']['default_generations_dir']
             if 'max_iterations' in data['project']:
                 config.project.max_iterations = data['project']['max_iterations']
+
+        # Override review settings
+        if 'review' in data:
+            if 'min_reviews_for_analysis' in data['review']:
+                config.review.min_reviews_for_analysis = data['review']['min_reviews_for_analysis']
 
         # Override sandbox settings
         if 'sandbox' in data:
@@ -221,6 +233,9 @@ class Config:
             'project': {
                 'default_generations_dir': self.project.default_generations_dir,
                 'max_iterations': self.project.max_iterations,
+            },
+            'review': {
+                'min_reviews_for_analysis': self.review.min_reviews_for_analysis,
             },
             'sandbox': {
                 'type': self.sandbox.type,

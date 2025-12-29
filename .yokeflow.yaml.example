@@ -57,6 +57,15 @@ project:
   # Set a number to limit iterations by default
   max_iterations: null
 
+# Review Configuration
+# --------------------
+# Settings for the quality review and prompt improvement system
+review:
+  # Minimum deep reviews required before running prompt improvement analysis
+  # Lower values (3-5) provide faster insights but less statistical significance
+  # Higher values (10-15) provide more robust patterns but require more sessions
+  min_reviews_for_analysis: 5  # Default: 5 (recommended balance)
+
 # Sandbox Configuration
 # ----------------------
 # Isolated execution environments for agent sessions

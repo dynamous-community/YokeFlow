@@ -32,7 +32,7 @@ export default function PromptImprovementDashboard() {
   // Form state for triggering new analysis
   const [sandboxType, setSandboxType] = useState<'docker' | 'local'>('docker');
   const [lastNDays, setLastNDays] = useState(7);
-  const [minSessions, setMinSessions] = useState(5);
+  const [configuredMinReviews, setConfiguredMinReviews] = useState(5); // From config file
 
   useEffect(() => {
     loadData();
@@ -50,14 +50,20 @@ export default function PromptImprovementDashboard() {
     try {
       setLoading(true);
       setError(null);
-      const [analysesData, metricsData, projectsData] = await Promise.all([
+      const [analysesData, metricsData, projectsData, configData] = await Promise.all([
         api.listPromptAnalyses({ limit: 20 }),
         api.getPromptImprovementMetrics(),
         api.listProjects(),
+        api.getPromptImprovementConfig(),
       ]);
       setAnalyses(analysesData);
       setMetrics(metricsData);
       setProjects(projectsData);
+
+      // Set the configured min reviews
+      if (configData && configData.min_reviews_for_analysis) {
+        setConfiguredMinReviews(configData.min_reviews_for_analysis);
+      }
     } catch (err: any) {
       console.error('Failed to load prompt improvement data:', err);
       setError(err.response?.data?.detail || err.message || 'Failed to load data');
@@ -102,7 +108,6 @@ export default function PromptImprovementDashboard() {
       const request: TriggerAnalysisRequest = {
         sandbox_type: sandboxType,
         last_n_days: lastNDays,
-        min_sessions_per_project: minSessions,
         ...(selectedProjectId && { project_ids: [selectedProjectId] }),
       };
 
@@ -315,14 +320,40 @@ export default function PromptImprovementDashboard() {
 
           {/* Analyze This Project Button */}
           {selectedProjectId && (
-            <div className="flex gap-2">
-              <button
-                onClick={triggerAnalysis}
-                disabled={triggering}
-                className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed transition-colors font-medium"
-              >
-                {triggering ? 'Analyzing...' : 'Analyze This Project'}
-              </button>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={triggerAnalysis}
+                  disabled={triggering || (projectStats && projectStats.sessions_with_reviews < configuredMinReviews)}
+                  className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
+                  title={
+                    projectStats && projectStats.sessions_with_reviews < configuredMinReviews
+                      ? `At least ${configuredMinReviews} deep reviews required (currently ${projectStats.sessions_with_reviews})`
+                      : 'Analyze prompt patterns for this project'
+                  }
+                >
+                  {triggering ? 'Analyzing...' : 'Analyze This Project'}
+                </button>
+              </div>
+              {/* Show message if not enough reviews */}
+              {projectStats && projectStats.sessions_with_reviews < configuredMinReviews && (
+                <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 border border-amber-200 dark:border-amber-800">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <div>
+                      <strong>More deep reviews needed:</strong> Analysis requires at least {configuredMinReviews} deep reviews (configured in .yokeflow.yaml).
+                      This project has {projectStats.sessions_with_reviews} review{projectStats.sessions_with_reviews === 1 ? '' : 's'}.
+                      {projectStats.sessions_without_reviews > 0 && (
+                        <span className="block mt-1">
+                          Use "Trigger More Reviews" to generate {Math.min(projectStats.sessions_without_reviews, configuredMinReviews - projectStats.sessions_with_reviews)} additional review{Math.min(projectStats.sessions_without_reviews, configuredMinReviews - projectStats.sessions_with_reviews) === 1 ? '' : 's'}.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

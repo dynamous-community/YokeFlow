@@ -418,6 +418,16 @@ class ApiClient {
   }
 
   /**
+   * Get prompt improvement configuration
+   */
+  async getPromptImprovementConfig(): Promise<{ min_reviews_for_analysis: number }> {
+    const response = await this.client.get<{ min_reviews_for_analysis: number }>(
+      '/api/prompt-improvements/config'
+    );
+    return response.data;
+  }
+
+  /**
    * Get overall prompt improvement metrics
    */
   async getPromptImprovementMetrics(): Promise<ImprovementMetrics> {

@@ -43,11 +43,6 @@ class TriggerAnalysisRequest(BaseModel):
         ge=1,
         le=90
     )
-    min_sessions_per_project: int = Field(
-        5,
-        description="Minimum sessions required per project",
-        ge=1
-    )
 
 
 class AnalysisSummary(BaseModel):
@@ -143,6 +138,11 @@ async def trigger_analysis(request: TriggerAnalysisRequest, background_tasks: Ba
     try:
         db = await get_db()
 
+        # Get configured minimum reviews requirement
+        from core.config import Config
+        config = Config.load_default()
+        min_reviews_required = config.review.min_reviews_for_analysis
+
         # Get project ID - only single project analysis supported
         if not request.project_ids or len(request.project_ids) == 0:
             # Auto-discover first eligible project
@@ -170,13 +170,13 @@ async def trigger_analysis(request: TriggerAnalysisRequest, background_tasks: Ba
                     query,
                     request.sandbox_type,
                     f'{request.last_n_days} days',
-                    request.min_sessions_per_project or 3
+                    min_reviews_required
                 )
 
                 if not row:
                     return {
                         "success": False,
-                        "message": f"No eligible projects found with {request.min_sessions_per_project or 3}+ deep reviews in last {request.last_n_days} days"
+                        "message": f"No eligible projects found with {min_reviews_required}+ deep reviews in last {request.last_n_days} days"
                     }
 
                 project_id = row['id']
@@ -235,7 +235,7 @@ async def trigger_analysis(request: TriggerAnalysisRequest, background_tasks: Ba
 
                 result = await analyzer.analyze_project(
                     project_id=project_id,
-                    min_reviews=request.min_sessions_per_project or 3,
+                    min_reviews=min_reviews_required,
                     store_in_db=True,
                     triggered_by="manual",
                     analysis_id=analysis_id  # Pass the pre-created ID
@@ -329,6 +329,29 @@ async def list_analyses(
     except Exception as e:
         logger.error(f"Failed to list analyses: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/config", response_model=dict)
+async def get_config():
+    """
+    Get configuration values for the prompt improvement system.
+
+    Returns relevant configuration settings from .yokeflow.yaml.
+    """
+    try:
+        from core.config import Config
+        config = Config.load_default()
+
+        return {
+            "min_reviews_for_analysis": config.review.min_reviews_for_analysis
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get config: {e}")
+        # Return default if config fails
+        return {
+            "min_reviews_for_analysis": 5
+        }
 
 
 @router.get("/metrics", response_model=ImprovementMetrics)

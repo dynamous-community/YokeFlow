@@ -428,7 +428,6 @@ export interface TriggerAnalysisRequest {
   project_ids?: string[];  // Optional: specific projects to analyze
   sandbox_type?: string;  // 'docker' or 'local'
   last_n_days?: number;  // Time window (default: 7)
-  min_sessions_per_project?: number;  // Minimum sessions required (default: 5)
 }
 
 /**

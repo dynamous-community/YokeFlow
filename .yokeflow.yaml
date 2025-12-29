@@ -19,3 +19,6 @@ sandbox:
 project:
   default_generations_dir: generations
   max_iterations: null  # unlimited
+
+review:
+  min_reviews_for_analysis: 5  # Minimum deep reviews required for prompt improvement analysis
