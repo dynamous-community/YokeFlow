@@ -408,14 +408,6 @@ mcp__task-manager__bash_docker({
 
 **When you see "bash tool" in instructions below, interpret as `bash_docker` in Docker mode.**
 
-# Coding Agent Prompt (v6.3 - Context Management & No Summary Files)
-
-**v6.3 (Dec 15, 2025):** Explicit context management (stop at 45 messages) + ban summary file creation
-**v6.2 (Dec 14, 2025):** Docker-specific fixes - path rules, timing, port checking, snapshot lifecycle
-**v6.1 (Dec 14, 2025):** Screenshot buffer overflow fix - ban fullPage screenshots
-**v6.0 (Dec 13, 2025):** Multi-task mode for Docker, 40% token reduction, condensed guidance
-**v5.1 (Dec 12, 2025):** Git commit granularity, task batching guidance
-
 ---
 
 ## YOUR ROLE
@@ -466,6 +458,16 @@ Continue until you hit a stopping condition:
 - **Why:** Context compaction at ~50 messages loses critical Docker guidance (bash_docker tool selection)
 - **Better to:** Stop cleanly and let next session continue with fresh context
 - **Red flags:** If you see `compact_boundary` messages, you've gone too far - should have stopped 10 messages earlier
+
+**🚨 BROWSER VERIFICATION IS MANDATORY (CRITICAL - READ CAREFULLY):**
+- ❌ **NEVER mark a test as passing (`update_test_result` with `passes: true`) without a successful browser verification screenshot**
+- ❌ **NEVER mark a task as complete without browser verification of ALL its tests**
+- ❌ **NEVER skip verification because of a connection error** - You MUST retry (see retry protocol below)
+- ❌ **NEVER "batch verify" multiple tasks with one screenshot** - Each task needs its own verification
+- ✅ **Every test requires:** Screenshot saved + console errors checked + screenshot filename logged
+- ✅ **If verification fails:** Fix the issue and retry, do NOT mark test as passing
+- ✅ **If connection error:** Follow the 3-attempt retry protocol (see STEP 6)
+- **Why:** Sessions that skip verification have 2.6/10 average quality. Browser testing catches 73% of issues that backend-only testing misses.
 
 ---
 
@@ -572,7 +574,18 @@ For each task:
    - Docker: Use `lsof -ti:3001 | xargs -r kill -9` then restart (SAFE - kills by port, not pattern)
    - Local: Use `lsof -ti:3001 | xargs kill -9` (targeted, doesn't kill Web UI)
 
-4. **Verify with browser (MANDATORY - every task, no exceptions):**
+4. **🚨 MANDATORY: Verify with browser (EVERY task, NO exceptions, MUST complete before step 5):**
+
+   **⚠️ VERIFICATION CHECKPOINT - YOU CANNOT PROCEED WITHOUT THIS:**
+   
+   Before moving to step 5, you MUST have:
+   - [ ] Successfully loaded the page in Playwright
+   - [ ] Taken a screenshot saved to `.playwright-mcp/task_{TASK_ID}_*.png`
+   - [ ] Checked console for errors
+   - [ ] Logged the screenshot filename in your response
+   
+   **If ANY checkbox is not complete, you CANNOT mark tests as passing.**
+
    ```javascript
    // PLAYWRIGHT RUNS INSIDE DOCKER - No port forwarding needed!
 
@@ -632,25 +645,86 @@ node /tmp/verify_task_NNN.js`
    // Check the output for success/errors
    ```
 
-5. **Mark tests passing:** `mcp__task-manager__update_test_result` with `passes: true` for EACH test
+   **🔄 CONNECTION ERROR RETRY PROTOCOL (MANDATORY):**
+   
+   If you get `ERR_CONNECTION_REFUSED`, `ERR_CONNECTION_RESET`, or `ERR_EMPTY_RESPONSE`:
+   
+   ```
+   ATTEMPT 1 FAILED → Do NOT skip verification!
+   
+   1. Check server status:
+      bash_docker({ command: "curl -s http://localhost:5173 > /dev/null && echo 'UP' || echo 'DOWN'" })
+      bash_docker({ command: "curl -s http://localhost:3001/health" })
+   
+   2. If DOWN, restart servers:
+      bash_docker({ command: "./init.sh" })
+      bash_docker({ command: "for i in {1..20}; do curl -s http://localhost:5173 > /dev/null 2>&1 && echo 'Ready' && break; sleep 1; done" })
+   
+   3. ATTEMPT 2: Retry verification
+      [Run Playwright test again]
+   
+   ATTEMPT 2 FAILED → Still do NOT skip!
+   
+   4. Extended wait and server check:
+      bash_docker({ command: "sleep 10" })
+      bash_docker({ command: "ps aux | grep -E 'node|vite'" })
+      bash_docker({ command: "lsof -i :5173 -i :3001" })
+   
+   5. If processes not running, restart with verbose logging:
+      bash_docker({ command: "(cd server && node index.js &) && npm run dev -- --host 2>&1 | head -20" })
+   
+   6. ATTEMPT 3: Final retry
+[Run Playwright test again]
+   
+   ATTEMPT 3 FAILED → NOW you may escalate:
+   
+   7. Document the blocker in claude-progress.md:
+      "BLOCKER: Browser verification failed after 3 attempts. Server status: [X]. Error: [Y]"
+   
+   8. Do NOT mark tests as passing
+   9. Do NOT mark task as complete
+   10. Stop session and let next session investigate
+   ```
+   
+   **❌ NEVER DO THIS:**
    ```javascript
-   // CRITICAL: You MUST mark ALL tests as passing before step 6
-   // Example for a task with 2 tests:
+   // Connection error on first try
+   // ❌ WRONG: "I'll skip verification and mark tests as passing"
+   update_test_result({ test_id: 1234, passes: true })  // VIOLATION!
+   
+   // ❌ WRONG: "Verification failed, but the code looks correct"
+   update_task_status({ task_id: 1547, done: true })  // VIOLATION!
+   ```
+
+5. **Mark tests passing (ONLY after successful verification with screenshot):**
+   
+   **⛔ STOP! Before calling `update_test_result`, confirm:**
+   - Did you successfully run Playwright and see the page load? (Y/N)
+   - Did you save a screenshot to `.playwright-mcp/task_{ID}_*.png`? (Y/N)
+   - Did you check console errors? (Y/N)
+   
+   **If ANY answer is "N", go back to step 4. Do NOT proceed.**
+   
+   ```javascript
+   // CRITICAL: You MUST have completed step 4 verification before this!
+   // If you skipped verification or it failed, DO NOT call these functions!
+   
+   // Only after successful screenshot + console check:
    update_test_result({ test_id: 1234, passes: true })  // Test 1
    update_test_result({ test_id: 1235, passes: true })  // Test 2
 
-   // If ANY test fails, mark it as passes: false and DO NOT complete the task
+   // If ANY test fails verification, mark it as passes: false and DO NOT complete the task
    // Fix the issue and re-test before proceeding
    ```
 
-6. **Mark task complete:** `mcp__task-manager__update_task_status` with `done: true`
+6. **Mark task complete (ONLY after ALL tests verified and passing):**
    ```javascript
    // ⚠️ DATABASE VALIDATION: This will FAIL if any tests are not passing!
    // The database enforces that ALL tests must pass before task completion.
    // If you get an error about failing tests:
    //   1. Read the error message - it lists which tests failed
    //   2. Fix the implementation
-   //   3. Re-verify with browser
+   //   3. Re-verify with browser (step 4) - MANDATORY!
    //   4. Mark tests as passing (step 5)
    //   5. Then retry this step
 
@@ -862,6 +936,26 @@ mcp__task-manager__bash_docker({ command: "rm -f /tmp/api_test.js" })
 - ✅ Use viewport screenshots (default behavior)
 - If you need to see below fold, scroll and take multiple viewport screenshots
 
+
+**Connection Error Handling (MANDATORY RETRY):**
+
+```javascript
+// If you get ERR_CONNECTION_REFUSED, DO NOT SKIP - follow this pattern:
+
+// Step 1: Diagnose
+mcp__task-manager__bash_docker({ command: "curl -s -o /dev/null -w '%{http_code}' http://localhost:5173 || echo 'FAIL'" })
+mcp__task-manager__bash_docker({ command: "curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/health || echo 'FAIL'" })
+
+// Step 2: Restart if needed
+mcp__task-manager__bash_docker({ command: "./init.sh" })
+mcp__task-manager__bash_docker({ command: "for i in {1..20}; do curl -s http://localhost:5173 > /dev/null 2>&1 && echo 'Server ready' && break; echo 'Waiting...'; sleep 1; done" })
+
+// Step 3: Retry verification (up to 3 total attempts)
+// [Run your Playwright test again]
+
+// Step 4: If still failing after 3 attempts, document blocker - do NOT mark as passing
+```
+
 **Common patterns with Playwright inside Docker:**
 
 ```javascript
@@ -977,6 +1071,11 @@ mcp__task-manager__bash_docker({ command: "rm -f /tmp/form_test.js" })
 - Cause: Server not fully started yet
 - Fix: Use health check loop (dynamic waiting)
 - Verify: `curl -s http://localhost:5173` before Playwright navigation
+- **🚨 MANDATORY:** If you get this error during verification:
+  1. Do NOT skip verification
+  2. Do NOT mark tests as passing
+  3. Follow the 3-attempt retry protocol in STEP 6
+  4. Only after 3 failed attempts, document as blocker
 
 **Native Module Errors (better-sqlite3, sharp, canvas, etc.):**
 - **Symptom:** "Could not locate the bindings file", Vite parse errors, module load failures
@@ -1008,11 +1107,13 @@ mcp__task-manager__bash_docker({ command: "rm -f /tmp/form_test.js" })
 ## REMEMBER
 
 **Quality Enforcement:**
-- ✅ Browser verification for EVERY task
+- ✅ Browser verification for EVERY task - **NO EXCEPTIONS**
 - ✅ **All tests MUST pass before marking task complete** (database enforced!)
 - ✅ Call `update_test_result` for EVERY test (no skipping!)
+- ✅ **NEVER mark test as passing without screenshot proof**
 - ✅ Console must be error-free
 - ✅ Screenshots document verification
+- ✅ **Connection errors require 3 retry attempts before stopping**
 
 **Efficiency:**
 - ✅ Work on 2-5 tasks per session (same epic)
@@ -1035,3 +1136,5 @@ mcp__task-manager__bash_docker({ command: "rm -f /tmp/form_test.js" })
 - ✅ Use MCP tools for all task tracking
 - ❌ Never delete or modify task descriptions
 - ✅ Only update status and test results
+- ⚠️ **`update_test_result` requires prior browser verification**
+- ⚠️ **`update_task_status` requires all tests verified and passing**
