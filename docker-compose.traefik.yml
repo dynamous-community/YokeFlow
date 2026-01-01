@@ -1,0 +1,185 @@
+# YokeFlow - Traefik Integration for Local Development
+#
+# Usage:
+#   docker compose -f docker-compose.traefik.yml up -d --build
+#   docker compose -f docker-compose.traefik.yml --profile tools up -d  # With pgAdmin
+#
+# Routes via Traefik:
+#   yokeflow.localhost          -> yokeflow-ui (Next.js frontend, port 3000)
+#   yokeflow.localhost/api/*    -> yokeflow-api (FastAPI backend, port 8000)
+#   yokeflow.localhost/ws/*     -> yokeflow-api (WebSocket, port 8000)
+#
+# Prerequisites:
+#   - Traefik running with traefik-public network
+#   - Copy .env.example to .env and configure
+
+services:
+  # ==========================================================================
+  # POSTGRESQL DATABASE
+  # ==========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: yokeflow-postgres
+    environment:
+      POSTGRES_DB: yokeflow
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agent_dev_password}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+      POSTGRES_HOST_AUTH_METHOD: md5
+    volumes:
+      - yokeflow_postgres_data:/var/lib/postgresql/data
+      - ./schema/postgresql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d yokeflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - yokeflow-network
+
+  # ==========================================================================
+  # YOKEFLOW API - FastAPI Backend
+  # ==========================================================================
+  yokeflow-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+      args:
+        API_PORT: ${API_PORT:-8000}
+    container_name: yokeflow-api
+    volumes:
+      # Docker socket for sandbox container management
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Generations directory for project files (shared with sandbox containers)
+      - ./generations:/app/generations
+      # Config file
+      - ./.yokeflow.yaml:/app/.yokeflow.yaml:ro
+      # Claude credentials for automatic OAuth token refresh
+      - ${USERPROFILE}/.claude/.credentials.json:/home/yokeflow/.claude/.credentials.json:ro
+    environment:
+      # Database
+      - DATABASE_URL=postgresql://agent:${POSTGRES_PASSWORD:-agent_dev_password}@yokeflow-postgres:5432/yokeflow
+      # API Config
+      - API_HOST=0.0.0.0
+      - API_PORT=${API_PORT:-8000}
+      - API_RELOAD=false
+      # CORS - Allow Traefik domain
+      - CORS_ORIGINS=http://yokeflow.localhost,http://localhost:3000,http://localhost:8000
+      # Auth
+      - SECRET_KEY=${SECRET_KEY:-yokeflow-dev-secret-key}
+      - UI_PASSWORD=${UI_PASSWORD:-}
+      # Claude API
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      - DEFAULT_INITIALIZER_MODEL=${DEFAULT_INITIALIZER_MODEL:-claude-opus-4-5-20251101}
+      - DEFAULT_CODING_MODEL=${DEFAULT_CODING_MODEL:-claude-sonnet-4-5-20250929}
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      # Docker-in-Docker: Host path for volume mounts
+      - HOST_GENERATIONS_PATH=${HOST_GENERATIONS_PATH:-D:/yokeflow/YokeFlow/generations}
+    networks:
+      - yokeflow-network
+      - traefik-public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      # API Router - yokeflow.localhost/api/*
+      - "traefik.http.routers.yokeflow-api.rule=Host(`yokeflow.localhost`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.yokeflow-api.entrypoints=web"
+      - "traefik.http.routers.yokeflow-api.priority=10"
+      - "traefik.http.routers.yokeflow-api.service=yokeflow-api"
+      - "traefik.http.services.yokeflow-api.loadbalancer.server.port=8000"
+      # WebSocket Router - yokeflow.localhost/ws/*
+      - "traefik.http.routers.yokeflow-ws.rule=Host(`yokeflow.localhost`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.yokeflow-ws.entrypoints=web"
+      - "traefik.http.routers.yokeflow-ws.priority=10"
+      - "traefik.http.routers.yokeflow-ws.service=yokeflow-api"
+      - "traefik.http.services.yokeflow-ws.loadbalancer.server.port=8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ==========================================================================
+  # YOKEFLOW WEB UI - Next.js Frontend
+  # ==========================================================================
+  yokeflow-ui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web-ui
+      args:
+        WEB_UI_PORT: ${WEB_UI_PORT:-3000}
+        # Use relative URLs through Traefik
+        NEXT_PUBLIC_API_URL: http://yokeflow.localhost
+        NEXT_PUBLIC_WS_URL: ws://yokeflow.localhost
+    container_name: yokeflow-ui
+    environment:
+      - PORT=${WEB_UI_PORT:-3000}
+      - NODE_ENV=production
+    networks:
+      - yokeflow-network
+      - traefik-public
+    depends_on:
+      yokeflow-api:
+        condition: service_healthy
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      # Frontend Router - yokeflow.localhost (catch-all for UI)
+      - "traefik.http.routers.yokeflow-ui.rule=Host(`yokeflow.localhost`)"
+      - "traefik.http.routers.yokeflow-ui.entrypoints=web"
+      - "traefik.http.routers.yokeflow-ui.priority=1"
+      - "traefik.http.services.yokeflow-ui.loadbalancer.server.port=3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ==========================================================================
+  # PGADMIN - Database Management UI (--profile tools)
+  # ==========================================================================
+  pgadmin:
+    profiles: ["tools"]
+    image: dpage/pgadmin4:latest
+    container_name: yokeflow-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@yokeflow.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - yokeflow-network
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.yokeflow-pgadmin.rule=Host(`pgadmin.yokeflow.localhost`)"
+      - "traefik.http.routers.yokeflow-pgadmin.entrypoints=web"
+      - "traefik.http.services.yokeflow-pgadmin.loadbalancer.server.port=80"
+
+# ==========================================================================
+# VOLUMES
+# ==========================================================================
+volumes:
+  yokeflow_postgres_data:
+    name: yokeflow_postgres_data
+
+# ==========================================================================
+# NETWORKS
+# ==========================================================================
+networks:
+  yokeflow-network:
+    driver: bridge
+  traefik-public:
+    external: true

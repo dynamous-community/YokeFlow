@@ -1,0 +1,76 @@
+# YokeFlow API - FastAPI Backend
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies, Docker CLI, Node.js, and gosu for user switching
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    ca-certificates \
+    gnupg \
+    gosu \
+    && install -m 0755 -d /etc/apt/keyrings \
+    # Docker repo
+    && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+    && chmod a+r /etc/apt/keyrings/docker.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list \
+    # Node.js repo
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
+    && apt-get install -y docker-ce-cli nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+COPY api/requirements.txt ./api/requirements.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r api/requirements.txt
+
+# Copy and build MCP task manager
+COPY mcp-task-manager/package*.json ./mcp-task-manager/
+RUN cd mcp-task-manager && npm ci
+COPY mcp-task-manager/src/ ./mcp-task-manager/src/
+COPY mcp-task-manager/tsconfig.json ./mcp-task-manager/
+RUN cd mcp-task-manager && npm run build
+
+# Copy application code
+COPY core/ ./core/
+COPY api/ ./api/
+COPY prompts/ ./prompts/
+COPY schema/ ./schema/
+COPY review/ ./review/
+
+# Create non-root user (required for Claude Code --dangerously-skip-permissions)
+# Add docker group (gid 999) for Docker socket access
+RUN groupadd -g 1000 yokeflow && \
+    groupadd -g 999 docker && \
+    useradd -u 1000 -g yokeflow -G docker -m -s /bin/bash yokeflow && \
+    chown -R yokeflow:yokeflow /app
+
+# Copy entrypoint script (fixes Docker socket permissions then runs as yokeflow)
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Set environment variables
+ENV PYTHONPATH="/app:$PYTHONPATH"
+ENV PYTHONUNBUFFERED=1
+ENV HOME=/home/yokeflow
+
+# Expose API port
+ARG API_PORT=8000
+ENV API_PORT=${API_PORT}
+EXPOSE ${API_PORT}
+
+# Container starts as root, entrypoint fixes docker socket then switches to yokeflow
+ENTRYPOINT ["/entrypoint.sh"]
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:${API_PORT}/api/health || exit 1
+
+# Run the API server
+CMD ["sh", "-c", "python -m uvicorn api.main:app --host 0.0.0.0 --port ${API_PORT}"]
