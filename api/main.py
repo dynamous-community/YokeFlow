@@ -32,6 +32,7 @@ import shutil
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, UploadFile, File, Form, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
@@ -71,6 +72,7 @@ from core.orchestrator import AgentOrchestrator, SessionInfo, SessionStatus, Ses
 from core.database_connection import DatabaseManager, is_postgresql_configured, get_db
 from core.config import Config
 from core.reset import reset_project
+from core.spec_generator import generate_spec_stream
 from api.prompt_improvements_routes import router as prompt_improvements_router
 
 logger = logging.getLogger(__name__)
@@ -529,6 +531,59 @@ async def list_projects(current_user: dict = Depends(get_current_user)):
         logger.error(f"Failed to list projects: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ============================================================================
+# Spec Generation Endpoint
+# ============================================================================
+
+@app.post("/api/generate-spec")
+async def generate_spec(
+    description: str = Form(...),
+    project_name: Optional[str] = Form(None),
+    context_files: Optional[List[UploadFile]] = File(None),
+    technology_preferences: Optional[str] = Form(None),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Generate an app_spec.txt from a natural language description.
+
+    Uses Claude to analyze the description and optional context files
+    to produce a structured XML specification suitable for YokeFlow.
+
+    Returns an SSE stream with progress updates and the final XML spec.
+
+    Events:
+    - spec_progress: {"type": "spec_progress", "content": "...", "phase": "..."}
+    - spec_complete: {"type": "spec_complete", "xml": "...", "project_name": "..."}
+    - spec_error: {"type": "spec_error", "error": "..."}
+    """
+    async def event_generator():
+        try:
+            async for event in generate_spec_stream(
+                description=description,
+                project_name=project_name,
+                context_files=context_files,
+                technology_preferences=technology_preferences,
+            ):
+                yield event
+        except Exception as e:
+            logger.exception("Error during spec generation")
+            yield f'data: {{"type": "spec_error", "error": "{str(e)}"}}\n\n'
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable buffering in nginx
+        }
+    )
+
+
+# ============================================================================
+# Project Management Endpoints
+# ============================================================================
 
 @app.post("/api/projects", response_model=ProjectResponse)
 async def create_project(
