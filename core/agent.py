@@ -179,6 +179,15 @@ async def run_agent_session(
                             print("   Check generations/{project}/.env and remove ANTHROPIC_API_KEY if present.", flush=True)
                             raise RuntimeError(error_msg)
 
+                        # Check for OAuth/authentication errors (token expired)
+                        if "API Error: 401" in block.text or "authentication_error" in block.text:
+                            error_msg = "OAuth token has expired - please refresh your authentication"
+                            logger.log_error(error_msg)
+                            print(f"\n[X] FATAL ERROR: {error_msg}", flush=True)
+                            print("   Your Claude OAuth token has expired and needs to be refreshed.", flush=True)
+                            print("   Run: claude /login", flush=True)
+                            raise RuntimeError(error_msg)
+
                         # Log assistant text
                         logger.log_assistant_text(block.text)
 
