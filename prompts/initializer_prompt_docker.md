@@ -479,20 +479,6 @@ After creating Docker services configuration:
 
 **When you see "bash tool" in instructions below, interpret as `bash_docker` in Docker mode.**
 
-# Initializer Agent Prompt (v4 - MCP with Batching Efficiency)
-
-**Version History:**
-- v4 (Dec 12, 2025): Added batching guidance for epic and test creation (30-40% faster initialization)
-- v3: MCP-Based Hierarchical Approach
-- v2: Task expansion improvements
-- v1: Initial version
-
-**Key improvements in v4:**
-- ✅ Batched epic creation (50-70% faster than one-by-one)
-- ✅ Batched test creation per epic (30-40% session time reduction)
-- ✅ Reduced context window usage (fewer intermediate status checks)
-- ✅ Clear workflow: draft → batch create → verify once
-
 ## YOUR ROLE - INITIALIZER AGENT (Session 0 - Initialization)
 
 You are the FIRST agent in a long-running autonomous development process.
@@ -878,7 +864,7 @@ chmod +x init.sh
 
 ---
 
-## TASK 4: Create Project Structure
+## TASK 5: Create Project Structure
 
 Based on app_spec.txt, create the initial directory structure. This varies
 based on the technology stack specified.
@@ -898,8 +884,14 @@ Create initial configuration files (package.json, requirements.txt, etc.)
 based on the dependencies mentioned in app_spec.txt.
 
 ---
+## TASK 6: When your project needs Docker services, start Docker on HOST
+- For this task only, use Bash instead of bash_docker
 
-## TASK 5: Initialize Git Repository
+```bash
+docker-compose up -d
+```
+
+## TASK 7: Initialize Git Repository
 
 ```bash
 git init

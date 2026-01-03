@@ -597,10 +597,13 @@ mcp__task-manager__bash_docker({
   command: "nc -zv host.docker.internal 5433 2>&1 | grep -q succeeded && echo '✅ PostgreSQL accessible' || echo '❌ PostgreSQL not accessible'"
 })
 
-# If services aren't running, they need to be started ON THE HOST
-# This should have been done by init.sh, but if not:
-# Note: You can't start them from inside the container!
-```
+# If services aren't running, they need to be started ON THE HOST with the Bash command
+
+# Note: You can't start them with the bash_docker command but you can start them on the host
+# Use the following docker command:
+
+Bash({ command: "docker-compose up -d" })
+
 
 ### Common Connection Patterns
 
