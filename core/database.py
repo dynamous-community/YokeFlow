@@ -17,12 +17,18 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 from uuid import UUID, uuid4
 import hashlib
-import logging
 
 from core.config import Config
 from core.database_retry import with_retry, RetryConfig
+from core.structured_logging import get_logger, PerformanceLogger
+from core.errors import (
+    DatabaseConnectionError,
+    DatabaseQueryError,
+    DatabaseTransactionError,
+    DatabasePoolExhaustedError
+)
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class TaskDatabase:
@@ -940,43 +946,44 @@ class TaskDatabase:
         Returns:
             Next task with epic info and tests, or None
         """
-        async with self.acquire() as conn:
-            # Get the next task
-            task_row = await conn.fetchrow(
-                """
-                SELECT
-                    t.*,
-                    e.name as epic_name,
-                    e.description as epic_description
-                FROM tasks t
-                JOIN epics e ON t.epic_id = e.id
-                WHERE t.project_id = $1
-                    AND t.done = false
-                    AND e.status != 'completed'
-                ORDER BY e.priority, t.priority, t.id
-                LIMIT 1
-                """,
-                project_id
-            )
+        with PerformanceLogger("get_next_task", {"project_id": str(project_id)}):
+            async with self.acquire() as conn:
+                # Get the next task
+                task_row = await conn.fetchrow(
+                    """
+                    SELECT
+                        t.*,
+                        e.name as epic_name,
+                        e.description as epic_description
+                    FROM tasks t
+                    JOIN epics e ON t.epic_id = e.id
+                    WHERE t.project_id = $1
+                        AND t.done = false
+                        AND e.status != 'completed'
+                    ORDER BY e.priority, t.priority, t.id
+                    LIMIT 1
+                    """,
+                    project_id
+                )
 
-            if not task_row:
-                return None
+                if not task_row:
+                    return None
 
-            task = dict(task_row)
+                task = dict(task_row)
 
-            # Get tests for this task
-            test_rows = await conn.fetch(
-                """
-                SELECT * FROM tests
-                WHERE task_id = $1
-                ORDER BY id
-                """,
-                task['id']
-            )
+                # Get tests for this task
+                test_rows = await conn.fetch(
+                    """
+                    SELECT * FROM tests
+                    WHERE task_id = $1
+                    ORDER BY id
+                    """,
+                    task['id']
+                )
 
-            task['tests'] = [dict(row) for row in test_rows]
+                task['tests'] = [dict(row) for row in test_rows]
 
-            return task
+                return task
 
     async def update_task_status(
         self,
