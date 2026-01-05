@@ -32,7 +32,8 @@ from core.errors import (
     ClaudeAPIError
 )
 
-logger = get_logger(__name__)
+# Module-level structured logger (use 'module_logger' to avoid conflict with SessionLogger parameter)
+module_logger = get_logger(__name__)
 
 
 # Configuration
@@ -134,7 +135,7 @@ async def run_agent_session(
     if hasattr(logger, "project_id"):
         set_project_id(str(logger.project_id))
 
-    logger.info("Starting agent session", extra={
+    module_logger.info("Starting agent session", extra={
         "project_dir": str(project_dir),
         "verbose": verbose,
         "intervention_enabled": intervention_config.get("enabled", False) if intervention_config else False
@@ -470,7 +471,7 @@ async def run_agent_session(
         # Finalize logging and get session summary
         session_summary = logger.finalize("continue", response_text, usage_data=usage_data)
 
-        logger.info("Agent session completed successfully", extra={
+        module_logger.info("Agent session completed successfully", extra={
             "status": "continue",
             "message_count": message_count,
             "usage": usage_data
@@ -485,7 +486,7 @@ async def run_agent_session(
         print(f"Error during agent session: {e}")
 
         # Log error with structured logging
-        logger.error("Agent session failed", exc_info=True, extra={
+        module_logger.error("Agent session failed", exc_info=True, extra={
             "error_type": type(e).__name__,
             "message_count": message_count if 'message_count' in locals() else 0
         })
