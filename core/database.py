@@ -2317,6 +2317,294 @@ class TaskDatabase:
                 json.dumps(resume_context or {})
             )
 
+    # =========================================================================
+    # Session Checkpoint Operations
+    # =========================================================================
+
+    async def create_checkpoint(
+        self,
+        session_id: UUID,
+        project_id: UUID,
+        checkpoint_type: str,
+        current_task_id: Optional[int] = None,
+        current_epic_id: Optional[int] = None,
+        message_count: int = 0,
+        iteration_count: int = 0,
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
+        tool_results_cache: Optional[Dict[str, Any]] = None,
+        completed_tasks: Optional[List[int]] = None,
+        in_progress_tasks: Optional[List[int]] = None,
+        blocked_tasks: Optional[List[int]] = None,
+        metrics_snapshot: Optional[Dict[str, Any]] = None,
+        files_modified: Optional[List[str]] = None,
+        git_commit_sha: Optional[str] = None,
+        resume_notes: Optional[str] = None
+    ) -> UUID:
+        """
+        Create a session checkpoint using SQL function.
+
+        Args:
+            session_id: Session UUID
+            project_id: Project UUID
+            checkpoint_type: Type (task_completion, epic_completion, manual, error)
+            current_task_id: Current task ID
+            current_epic_id: Current epic ID
+            message_count: Message count
+            iteration_count: Iteration count
+            conversation_history: Conversation messages
+            tool_results_cache: Cached tool results
+            completed_tasks: List of completed task IDs
+            in_progress_tasks: List of in-progress task IDs
+            blocked_tasks: List of blocked task IDs
+            metrics_snapshot: Metrics at checkpoint
+            files_modified: List of modified files
+            git_commit_sha: Git commit SHA
+            resume_notes: Resume notes
+
+        Returns:
+            UUID of created checkpoint
+        """
+        async with self.acquire() as conn:
+            checkpoint_id = await conn.fetchval(
+                """
+                SELECT create_checkpoint(
+                    $1::UUID, $2::UUID, $3, $4, $5, $6, $7,
+                    $8::jsonb, $9::jsonb, $10::integer[], $11::integer[],
+                    $12::integer[], $13::jsonb, $14::text[], $15, $16
+                )
+                """,
+                session_id,
+                project_id,
+                checkpoint_type,
+                current_task_id,
+                current_epic_id,
+                message_count,
+                iteration_count,
+                json.dumps(conversation_history or []),
+                json.dumps(tool_results_cache or {}),
+                completed_tasks or [],
+                in_progress_tasks or [],
+                blocked_tasks or [],
+                json.dumps(metrics_snapshot or {}),
+                files_modified or [],
+                git_commit_sha,
+                resume_notes
+            )
+            return checkpoint_id
+
+    async def get_checkpoint(self, checkpoint_id: UUID) -> Optional[Dict[str, Any]]:
+        """
+        Get a checkpoint by ID.
+
+        Args:
+            checkpoint_id: Checkpoint UUID
+
+        Returns:
+            Checkpoint record or None
+        """
+        async with self.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM session_checkpoints WHERE id = $1",
+                checkpoint_id
+            )
+            return dict(row) if row else None
+
+    async def get_latest_checkpoint(
+        self,
+        session_id: UUID
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get the latest checkpoint for a session.
+
+        Args:
+            session_id: Session UUID
+
+        Returns:
+            Latest checkpoint or None
+        """
+        async with self.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT * FROM session_checkpoints
+                WHERE session_id = $1
+                ORDER BY checkpoint_number DESC
+                LIMIT 1
+                """,
+                session_id
+            )
+            return dict(row) if row else None
+
+    async def get_resumable_checkpoint(
+        self,
+        session_id: UUID
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get the latest resumable checkpoint for a session.
+
+        Args:
+            session_id: Session UUID
+
+        Returns:
+            Latest resumable checkpoint or None
+        """
+        async with self.acquire() as conn:
+            checkpoint_id = await conn.fetchval(
+                "SELECT get_latest_resumable_checkpoint($1::UUID)",
+                session_id
+            )
+
+            if not checkpoint_id:
+                return None
+
+            row = await conn.fetchrow(
+                "SELECT * FROM session_checkpoints WHERE id = $1",
+                checkpoint_id
+            )
+            return dict(row) if row else None
+
+    async def invalidate_checkpoints(
+        self,
+        session_id: UUID,
+        reason: str
+    ) -> int:
+        """
+        Invalidate all checkpoints for a session.
+
+        Args:
+            session_id: Session UUID
+            reason: Invalidation reason
+
+        Returns:
+            Number of checkpoints invalidated
+        """
+        async with self.acquire() as conn:
+            count = await conn.fetchval(
+                "SELECT invalidate_checkpoints($1::UUID, $2)",
+                session_id,
+                reason
+            )
+            return count
+
+    async def start_checkpoint_recovery(
+        self,
+        checkpoint_id: UUID,
+        recovery_method: str,
+        new_session_id: Optional[UUID] = None
+    ) -> UUID:
+        """
+        Start a checkpoint recovery attempt.
+
+        Args:
+            checkpoint_id: Checkpoint UUID
+            recovery_method: Method (automatic, manual, partial)
+            new_session_id: Optional new session UUID
+
+        Returns:
+            Recovery record UUID
+        """
+        async with self.acquire() as conn:
+            recovery_id = await conn.fetchval(
+                "SELECT start_checkpoint_recovery($1::UUID, $2, $3::UUID)",
+                checkpoint_id,
+                recovery_method,
+                new_session_id
+            )
+            return recovery_id
+
+    async def complete_checkpoint_recovery(
+        self,
+        recovery_id: UUID,
+        status: str,
+        recovery_notes: Optional[str] = None,
+        error_message: Optional[str] = None,
+        state_differences: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """
+        Complete a checkpoint recovery attempt.
+
+        Args:
+            recovery_id: Recovery record UUID
+            status: Status (success, failed)
+            recovery_notes: Optional notes
+            error_message: Optional error message
+            state_differences: Optional state differences
+
+        Returns:
+            True if updated successfully
+        """
+        async with self.acquire() as conn:
+            success = await conn.fetchval(
+                "SELECT complete_checkpoint_recovery($1::UUID, $2, $3, $4, $5::jsonb)",
+                recovery_id,
+                status,
+                recovery_notes,
+                error_message,
+                json.dumps(state_differences or {})
+            )
+            return success
+
+    async def get_resumable_sessions(
+        self,
+        project_id: Optional[UUID] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all sessions that can be resumed from checkpoints.
+
+        Args:
+            project_id: Optional project UUID filter
+
+        Returns:
+            List of resumable session info
+        """
+        async with self.acquire() as conn:
+            if project_id:
+                rows = await conn.fetch(
+                    "SELECT * FROM v_resumable_checkpoints WHERE project_id = $1",
+                    project_id
+                )
+            else:
+                rows = await conn.fetch("SELECT * FROM v_resumable_checkpoints")
+
+            return [dict(row) for row in rows]
+
+    async def get_checkpoint_recovery_history(
+        self,
+        project_id: Optional[UUID] = None,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Get checkpoint recovery history.
+
+        Args:
+            project_id: Optional project UUID filter
+            limit: Maximum records
+
+        Returns:
+            List of recovery history records
+        """
+        async with self.acquire() as conn:
+            if project_id:
+                rows = await conn.fetch(
+                    """
+                    SELECT * FROM v_checkpoint_recovery_history
+                    WHERE project_id = $1
+                    ORDER BY recovery_initiated_at DESC
+                    LIMIT $2
+                    """,
+                    project_id, limit
+                )
+            else:
+                rows = await conn.fetch(
+                    """
+                    SELECT * FROM v_checkpoint_recovery_history
+                    ORDER BY recovery_initiated_at DESC
+                    LIMIT $1
+                    """,
+                    limit
+                )
+
+            return [dict(row) for row in rows]
+
 
 # =============================================================================
 # Factory function for compatibility
