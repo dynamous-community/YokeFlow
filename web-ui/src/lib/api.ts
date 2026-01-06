@@ -124,6 +124,8 @@ class ApiClient {
     sandboxType: 'docker' | 'local' = 'docker',
     initializerModel?: string,
     codingModel?: string,
+    contextFiles?: File[],
+    contextStrategy?: any,
   ): Promise<CreateProjectResponse> {
     const formData = new FormData();
     formData.append('name', name);
@@ -139,6 +141,18 @@ class ApiClient {
     if (initializerModel) formData.append('initializer_model', initializerModel);
     if (codingModel) formData.append('coding_model', codingModel);
 
+    // Handle context files
+    if (contextFiles && contextFiles.length > 0) {
+      contextFiles.forEach(file => {
+        formData.append('context_files', file);
+      });
+    }
+
+    // Pass context strategy if provided
+    if (contextStrategy) {
+      formData.append('context_strategy', JSON.stringify(contextStrategy));
+    }
+
     const response = await this.client.post<CreateProjectResponse>('/api/projects', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
@@ -149,6 +163,24 @@ class ApiClient {
 
   async deleteProject(projectId: string): Promise<void> {
     await this.client.delete(`/api/projects/${projectId}`);
+  }
+
+  // Spec Validation
+
+  async validateSpec(content: string): Promise<{
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+    sections: Array<{ name: string; use_when?: string; depends_on?: string }>;
+  }> {
+    const formData = new FormData();
+    formData.append('spec_content', content);
+    const response = await this.client.post('/api/validate-spec', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
   }
 
   // Container Management

@@ -107,6 +107,8 @@ class AgentOrchestrator:
         sandbox_type: str = "docker",
         initializer_model: Optional[str] = None,
         coding_model: Optional[str] = None,
+        context_files: Optional[List[Dict[str, str]]] = None,  # List of {"filename": str, "content": str}
+        context_strategy: Optional[Dict[str, Any]] = None,  # Strategy from spec generation analysis
     ) -> Dict[str, Any]:
         """
         Create a new project from a specification.
@@ -120,6 +122,8 @@ class AgentOrchestrator:
             sandbox_type: Sandbox type (docker or local), default: docker
             initializer_model: Model for initialization session (optional)
             coding_model: Model for coding sessions (optional)
+            context_files: Optional list of dicts with {"filename", "content"} for project context
+            context_strategy: Optional dict with context injection strategy ("load_all" or "task_specific")
 
         Returns:
             Dict with project info: {"project_id": UUID, "name": str, ...}
@@ -166,8 +170,31 @@ class AgentOrchestrator:
             if spec_source:
                 copy_spec_to_project(project_path, spec_source)
             elif spec_content:
-                # Write spec_content to app_spec.txt if no source file provided
-                (project_path / "app_spec.txt").write_text(spec_content)
+                # Write spec_content to app_spec.md (using new markdown format)
+                (project_path / "app_spec.md").write_text(spec_content)
+
+            # Persist context files if provided
+            if context_files:
+                context_dir = project_path / ".yokeflow" / "context"
+                context_dir.mkdir(parents=True, exist_ok=True)
+                
+                for ctx_file in context_files:
+                    try:
+                        file_path = context_dir / ctx_file["filename"]
+                        file_path.write_text(ctx_file["content"])
+                    except Exception as e:
+                        logger.warning(f"Failed to save context file {ctx_file.get('filename')}: {e}")
+                
+                logger.info(f"Saved {len(context_files)} context files to {context_dir}")
+                
+                # Create manifest with summaries
+                try:
+                    from core.context_manifest import create_context_manifest, save_manifest
+                    manifest = await create_context_manifest(context_files)
+                    save_manifest(manifest, context_dir)
+                    logger.info(f"Created context manifest for {len(context_files)} files")
+                except Exception as e:
+                    logger.warning(f"Failed to create context manifest: {e}")
 
             # Create project in database
             project = await db.create_project(
@@ -190,6 +217,11 @@ class AgentOrchestrator:
                 settings['initializer_model'] = initializer_model
             if coding_model:
                 settings['coding_model'] = coding_model
+            if context_strategy:
+                settings['context_strategy'] = context_strategy.get('strategy', 'load_all')
+                settings['context_strategy_reason'] = context_strategy.get('reason', '')
+                settings['context_strategy_metrics'] = context_strategy.get('metrics', {})
+                logger.info(f"Stored context strategy: {settings['context_strategy']}")
 
             await db.update_project_settings(project['id'], settings)
 
@@ -762,6 +794,46 @@ class AgentOrchestrator:
                     prompt = f"{base_prompt}\n\n{resume_prompt}"
                 else:
                     prompt = get_coding_prompt(sandbox_type=sandbox_type)
+
+                # Inject project context files (for both initializer and coding sessions)
+                # Use manifest-based approach to avoid memory issues with large files
+                context_dir = project_path / ".yokeflow" / "context"
+                if context_dir.exists():
+                    # Get context strategy from project metadata
+                    context_strategy = project_metadata.get('settings', {}).get('context_strategy', 'load_all')
+                    logger.info(f"Using context strategy: {context_strategy}")
+                    
+                    # Try to load manifest
+                    from core.context_manifest import load_manifest, manifest_to_prompt
+                    manifest = load_manifest(context_dir)
+                    
+                    if manifest:
+                        # Inject manifest (summaries only, ~3KB instead of 130KB+)
+                        manifest_prompt = manifest_to_prompt(manifest)
+                        prompt += "\n\n# Project Context Files\n"
+                        prompt += "The following context files are available. Use `cat .yokeflow/context/<filename>` to read when needed.\n\n"
+                        prompt += manifest_prompt
+                        logger.info(f"Injected manifest with {manifest['total_files']} files ({manifest['total_size_kb']}KB total) into system prompt")
+                    else:
+                        # Fallback: no manifest, load small files only
+                        small_file_parts = []
+                        for ctx_file in sorted(context_dir.glob("*")):
+                            if ctx_file.is_file() and ctx_file.name != "manifest.json":
+                                try:
+                                    content = ctx_file.read_text(encoding='utf-8')
+                                    # Only include small files (<5KB) directly
+                                    if len(content) <= 5000:
+                                        small_file_parts.append(f"## {ctx_file.name}\n```\n{content}\n```")
+                                    else:
+                                        # Just note that large files exist
+                                        small_file_parts.append(f"## {ctx_file.name}\n(Large file, {len(content)//1024}KB - use get_context_file tool to read)")
+                                except Exception as e:
+                                    logger.warning(f"Failed to read context file {ctx_file}: {e}")
+                        
+                        if small_file_parts:
+                            prompt += "\n\n# Project Context Files\n"
+                            prompt += "\n\n".join(small_file_parts)
+                            logger.info(f"Injected {len(small_file_parts)} context file references (no manifest)")
 
                 # Start heartbeat task to prevent false-positive stale detection
                 heartbeat_task = None

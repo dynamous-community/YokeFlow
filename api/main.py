@@ -30,9 +30,10 @@ import logging
 import tempfile
 import shutil
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, UploadFile, File, Form, Body, Depends
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, UploadFile, File, Form, Body, Depends, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
@@ -72,6 +73,8 @@ from core.orchestrator import AgentOrchestrator, SessionInfo, SessionStatus, Ses
 from core.database_connection import DatabaseManager, is_postgresql_configured, get_db
 from core.config import Config
 from core.reset import reset_project
+from core.spec_generator import generate_spec_stream
+from core.spec_validator import validate_spec_content
 from api.prompt_improvements_routes import router as prompt_improvements_router
 from core.structured_logging import (
     get_logger,
@@ -564,6 +567,97 @@ async def list_projects(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================================================
+# Spec Generation Endpoint
+# ============================================================================
+
+@app.post("/api/generate-spec")
+async def generate_spec(
+    description: str = Form(...),
+    project_name: Optional[str] = Form(None),
+    context_files: Optional[List[UploadFile]] = File(None),
+    technology_preferences: Optional[str] = Form(None),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Generate an app_spec.txt from a natural language description.
+
+    Uses Claude to analyze the description and optional context files
+    to produce a structured XML specification suitable for YokeFlow.
+
+    Returns an SSE stream with progress updates and the final XML spec.
+
+    Events:
+    - spec_progress: {"type": "spec_progress", "content": "...", "phase": "..."}
+    - spec_complete: {"type": "spec_complete", "xml": "...", "project_name": "..."}
+    - spec_error: {"type": "spec_error", "error": "..."}
+    """
+    async def event_generator():
+        try:
+            async for event in generate_spec_stream(
+                description=description,
+                project_name=project_name,
+                context_files=context_files,
+                technology_preferences=technology_preferences,
+            ):
+                yield event
+        except Exception as e:
+            logger.exception("Error during spec generation")
+            yield f'data: {{"type": "spec_error", "error": "{str(e)}"}}\n\n'
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable buffering in nginx
+        }
+    )
+
+
+# ============================================================================
+# Spec Validation Endpoint
+# ============================================================================
+
+@app.post("/api/validate-spec")
+async def validate_spec(
+    spec_content: str = Form(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Validate app_spec.md marker integrity.
+
+    Checks that all section markers are properly paired and well-formed.
+    Returns errors (which must be fixed) and warnings (recommendations).
+
+    Args:
+        spec_content: The markdown content to validate
+
+    Returns:
+        {
+            "valid": bool,
+            "errors": ["error message", ...],
+            "warnings": ["warning message", ...],
+            "sections": [{"name": "...", "use_when": "...", "depends_on": "..."}, ...]
+        }
+    """
+    try:
+        result = validate_spec_content(spec_content)
+        return result
+    except Exception as e:
+        logger.exception("Error during spec validation")
+        return {
+            "valid": False,
+            "errors": [f"Validation failed: {str(e)}"],
+            "warnings": [],
+            "sections": []
+        }
+
+# ============================================================================
+# Project Management Endpoints
+# ============================================================================
+
 @app.post("/api/projects", response_model=ProjectResponse)
 async def create_project(
     name: str = Form(...),
@@ -572,6 +666,8 @@ async def create_project(
     sandbox_type: str = Form("docker"),
     initializer_model: Optional[str] = Form(None),
     coding_model: Optional[str] = Form(None),
+    context_files: List[UploadFile] = File(None),  # Optional context files
+    context_strategy: Optional[str] = Form(None),  # JSON string of context strategy
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -583,15 +679,41 @@ async def create_project(
 
     For multiple files, they will be saved to a spec/ directory and
     the primary file will be auto-detected.
+    
+    context_files: Optional list of files to be saved as project context
     """
     try:
         # Validate project name format
         import re
+        import json as json_module
         if not re.match(r'^[a-z0-9_-]+$', name):
             raise HTTPException(
                 status_code=400,
                 detail="Project name must contain only lowercase letters, numbers, hyphens, and underscores (no spaces or special characters)"
             )
+        # Process context files if provided
+        context_files_list = []
+        if context_files:
+            for cf in context_files:
+                try:
+                    content = (await cf.read()).decode('utf-8')
+                    context_files_list.append({
+                        "filename": cf.filename,
+                        "content": content
+                    })
+                    # Reset cursor just in case
+                    await cf.seek(0)
+                except Exception as e:
+                    logger.warning(f"Failed to read context file {cf.filename}: {e}")
+
+        # Parse context strategy if provided
+        context_strategy_dict = None
+        if context_strategy:
+            try:
+                context_strategy_dict = json_module.loads(context_strategy)
+                logger.info(f"Context strategy: {context_strategy_dict.get('strategy')} - {context_strategy_dict.get('reason')}")
+            except json_module.JSONDecodeError:
+                logger.warning("Failed to parse context_strategy JSON, ignoring")
 
         spec_content = None
         spec_source = None
@@ -616,6 +738,8 @@ async def create_project(
             sandbox_type=sandbox_type,
             initializer_model=initializer_model,
             coding_model=coding_model,
+            context_files=context_files_list,
+            context_strategy=context_strategy_dict,
         )
 
         # Convert for response

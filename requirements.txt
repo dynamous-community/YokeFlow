@@ -17,5 +17,8 @@ asyncpg>=0.31.0  # High-performance async PostgreSQL driver
 psycopg2-binary>=2.9.11  # PostgreSQL adapter (for migrations/sync operations)
 sqlalchemy>=2.0.0  # ORM (optional, for future use)
 
+# Intervention System
+aiohttp>=3.9.0  # Async HTTP client for notifications
+
 # Sandbox Support
 docker>=7.0.0  # Docker SDK for Python (for DockerSandbox)
